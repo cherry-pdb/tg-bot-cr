@@ -443,11 +443,16 @@ public sealed class BotUpdateHandler : IUpdateHandler
                 : "слава + ремонт (очки)";
             var sumDecks = clan.Participants.Sum(p => p.DecksUsedToday);
             var avgMedals = (double)medals / sumDecks;
+            var unplayedPlayers = clan.Participants.Where(p => p.DecksUsedToday is > 0 and < 4);
+            var unusedDecks = unplayedPlayers.Sum(p => p.DecksUsedToday);
 
             sb.AppendLine($"{i + 1}. {clan.Name} {clan.Tag}");
             sb.AppendLine($"   {medalsNote}: {medals}");
             sb.AppendLine($"   Колод отыграно всего: {sumDecks}/200");
             sb.AppendLine($"   Среднее кол-во медалей за игру: {avgMedals.ToString("F2")}");
+            sb.AppendLine($"   Максимально клан может набрать: {medals + unusedDecks * 200}");
+            sb.AppendLine($"   Кол-во недоигранных колод: {unusedDecks}");
+            sb.AppendLine($"   Кол-во человек недоиграли: {unplayedPlayers.Count()}");
         }
 
         await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.None, ct);
