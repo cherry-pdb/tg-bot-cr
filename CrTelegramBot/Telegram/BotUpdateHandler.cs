@@ -429,7 +429,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
         var sb = new StringBuilder();
         sb.AppendLine("⚔️ Что с КВ?");
-        sb.AppendLine($"Состояние: {race.State ?? "н/д"}, период: {race.PeriodType ?? "н/д"}");
+        sb.AppendLine($"Период: {race.PeriodType ?? "н/д"}");
         sb.AppendLine();
 
         for (var i = 0; i < ordered.Count; i++)
@@ -444,7 +444,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
             sb.AppendLine($"{i + 1}. {clan.Name} {clan.Tag}");
             sb.AppendLine($"   {medalsNote}: {medals}");
-            sb.AppendLine($"   Колод отыграно всего: {clan.Participants.Sum(p => p.DecksUsedToday)/200}");
+            sb.AppendLine($"   Колод отыграно всего: {clan.Participants.Sum(p => p.DecksUsedToday)}/200");
         }
 
         await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.None, ct);
