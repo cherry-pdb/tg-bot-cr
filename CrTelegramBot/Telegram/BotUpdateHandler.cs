@@ -417,33 +417,39 @@ public sealed class BotUpdateHandler : IUpdateHandler
             return;
         }
 
-        // В речной гонке участвует до 5 кланов. Loose-парсер иногда дублирует записи — оставляем по одному на тег и топ-5.
         const int maxRiverRaceClans = 5;
         var ordered = race.Clans
             .Where(c => !string.IsNullOrWhiteSpace(c.Tag))
             .GroupBy(c => ClashRoyaleApiClient.NormalizeTag(c.Tag))
-            .Select(g => g.OrderByDescending(x => x.Fame + x.RepairPoints).First())
-            .OrderByDescending(x => x.Fame + x.RepairPoints)
+            .Select(g => g.OrderByDescending(x => x.PeriodPoints).ThenByDescending(x => x.Fame + x.RepairPoints).First())
+            .OrderByDescending(x => x.PeriodPoints)
+            .ThenByDescending(x => x.Fame + x.RepairPoints)
             .Take(maxRiverRaceClans)
             .ToList();
 
         var sb = new StringBuilder();
         sb.AppendLine("⚔️ Что с КВ?");
-        sb.AppendLine($"Состояние: {race.State ?? "n/a"}, период: {race.PeriodType ?? "n/a"}");
+        sb.AppendLine($"Состояние: {race.State ?? "н/д"}, период: {race.PeriodType ?? "н/д"}");
         sb.AppendLine();
 
         for (var i = 0; i < ordered.Count; i++)
         {
             var clan = ordered[i];
+            var medals = clan.PeriodPoints > 0
+                ? clan.PeriodPoints
+                : clan.Fame + clan.RepairPoints;
+            var medalsNote = clan.PeriodPoints > 0
+                ? "очки периода (медали)"
+                : "слава + ремонт (очки)";
+
             sb.AppendLine($"{i + 1}. {clan.Name} {clan.Tag}");
-            sb.AppendLine($"   Очки: {clan.Fame + clan.RepairPoints}");
-            sb.AppendLine($"   Колод сегодня: {clan.DecksUsedToday}, всего: {clan.DecksUsed}");
+            sb.AppendLine($"   {medalsNote}: {medals}");
+            sb.AppendLine($"   Колод отыграно всего: {clan.DecksUsed}");
         }
 
         await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.None, ct);
     }
 
-    /// <summary>Telegram ограничивает длину текста 4096 символами; длинный ответ шлём несколькими сообщениями.</summary>
     private async Task SendTextChunksAsync(long chatId, string text, ParseMode parseMode, CancellationToken ct)
     {
         const int maxLen = 4096;

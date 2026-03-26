@@ -77,13 +77,16 @@ public sealed class ClashRoyaleApiClient
             if (typeof(T) == typeof(CurrentRiverRaceDto) && TryParseCurrentRiverRaceLoosely(content, out var loose))
             {
                 var typed = parsed as CurrentRiverRaceDto;
+                if (typed?.Clans is { Count: > 0 })
+                    return parsed;
+
                 var typedScore = ScoreCurrentRiverRace(typed);
                 var looseScore = ScoreCurrentRiverRace(loose);
-                
+
                 if (looseScore > typedScore)
                 {
                     _logger.LogWarning("CR API currentriverrace: using loose parse (score {Loose} > {Typed}) for {Url}", looseScore, typedScore, url);
-                    
+
                     return (T)(object)loose;
                 }
             }
@@ -183,106 +186,118 @@ public sealed class ClashRoyaleApiClient
     private static bool TryParseCurrentRiverRaceLoosely(string json, out CurrentRiverRaceDto dto)
     {
         dto = new CurrentRiverRaceDto();
-        
-        if (string.IsNullOrWhiteSpace(json)) 
+
+        if (string.IsNullOrWhiteSpace(json))
             return false;
 
-        var clansIdx = json.IndexOf("\"clans\"", StringComparison.OrdinalIgnoreCase);
-        var slice = clansIdx >= 0 ? json[clansIdx..] : json;
-        var tagMatches = Regex.Matches(slice, "\"tag\"\\s*:\\s*\"(?<tag>#[^\"]+)\"", RegexOptions.IgnoreCase);
-        
-        if (tagMatches.Count == 0) 
-            return false;
-
-        var clans = new List<RiverRaceClanDto>(Math.Min(5, tagMatches.Count));
-
-        foreach (Match m in tagMatches)
+        try
         {
-            var tag = m.Groups["tag"].Value;
-            
-            if (string.IsNullOrWhiteSpace(tag) || clans.Any(c => c.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase)))
-                continue;
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
 
-            var start = m.Index;
-            var windowLen = Math.Min(2500, slice.Length - start);
-            
-            if (windowLen <= 0)
-                continue;
-            
-            var window = slice.Substring(start, windowLen);
+            dto.State = GetJsonString(root, "state");
+            dto.PeriodType = GetJsonString(root, "periodType");
 
-            clans.Add(new RiverRaceClanDto
+            if (!TryGetJsonProperty(root, "clans", out var clansEl) || clansEl.ValueKind != JsonValueKind.Array)
+                return false;
+
+            var clans = new List<RiverRaceClanDto>();
+
+            foreach (var clanEl in clansEl.EnumerateArray())
             {
-                Tag = tag,
-                Name = GetName(),
-                Fame = GetInt("fame"),
-                RepairPoints = GetInt("repairPoints"),
-                DecksUsed = GetInt("decksUsed"),
-                DecksUsedToday = GetInt("decksUsedToday"),
-                BoatAttacks = GetInt("boatAttacks"),
-                Crowns = GetInt("crowns"),
-                PeriodPoints = GetInt("periodPoints"),
-                Participants = []
-            });
-            
-            continue;
+                if (clanEl.ValueKind != JsonValueKind.Object)
+                    continue;
 
-            string GetName()
-            {
-                var mm = Regex.Match(
-                    window,
-                    "\"name\"\\s*:\\s*\"(?<name>[\\s\\S]*?)\"\\s*,\\s*\"(?:fame|repairPoints|decksUsed|decksUsedToday|boatAttacks|crowns|periodPoints)\"",
-                    RegexOptions.IgnoreCase);
-                
-                return mm.Success ? mm.Groups["name"].Value : tag;
-            }
+                var tag = GetJsonString(clanEl, "tag");
 
-            int GetInt(string field)
-            {
-                var mm = Regex.Match(window, $"\"{Regex.Escape(field)}\"\\s*:\\s*(?<n>-?\\d+)", RegexOptions.IgnoreCase);
-                
-                return mm.Success && int.TryParse(mm.Groups["n"].Value, out var n) ? n : 0;
-            }
-        }
+                if (string.IsNullOrWhiteSpace(tag))
+                    continue;
 
-        if (clans.Count == 0)
-            return false;
-        
-        dto.Clans = clans;
-        var clanIdx = json.IndexOf("\"clan\"", StringComparison.OrdinalIgnoreCase);
-        
-        if (clanIdx >= 0)
-        {
-            var clanSlice = json.Substring(clanIdx, Math.Min(8000, json.Length - clanIdx));
-            var mmTag = Regex.Match(clanSlice, "\"tag\"\\s*:\\s*\"(?<tag>#[^\"]+)\"", RegexOptions.IgnoreCase);
-            var tag = mmTag.Success ? mmTag.Groups["tag"].Value : string.Empty;
-            
-            if (!string.IsNullOrWhiteSpace(tag))
-            {
-                int GetInt(string field)
-                {
-                    var mm = Regex.Match(clanSlice, $"\"{Regex.Escape(field)}\"\\s*:\\s*(?<n>-?\\d+)", RegexOptions.IgnoreCase);
-                    
-                    return mm.Success && int.TryParse(mm.Groups["n"].Value, out var n) ? n : 0;
-                }
-
-                dto.Clan = new RiverRaceClanDto
+                clans.Add(new RiverRaceClanDto
                 {
                     Tag = tag,
-                    Name = tag,
-                    Fame = GetInt("fame"),
-                    RepairPoints = GetInt("repairPoints"),
-                    DecksUsed = GetInt("decksUsed"),
-                    DecksUsedToday = GetInt("decksUsedToday"),
-                    BoatAttacks = GetInt("boatAttacks"),
-                    Crowns = GetInt("crowns"),
-                    PeriodPoints = GetInt("periodPoints"),
+                    Name = GetJsonString(clanEl, "name"),
+                    Fame = GetJsonInt(clanEl, "fame"),
+                    RepairPoints = GetJsonInt(clanEl, "repairPoints"),
+                    DecksUsed = GetJsonInt(clanEl, "decksUsed"),
+                    DecksUsedToday = GetJsonInt(clanEl, "decksUsedToday"),
+                    BoatAttacks = GetJsonInt(clanEl, "boatAttacks"),
+                    Crowns = GetJsonInt(clanEl, "crowns"),
+                    PeriodPoints = GetJsonInt(clanEl, "periodPoints"),
                     Participants = []
-                };
+                });
+            }
+
+            if (clans.Count == 0)
+                return false;
+
+            dto.Clans = clans;
+
+            if (TryGetJsonProperty(root, "clan", out var singleEl) && singleEl.ValueKind == JsonValueKind.Object)
+            {
+                var t = GetJsonString(singleEl, "tag");
+
+                if (!string.IsNullOrWhiteSpace(t))
+                {
+                    dto.Clan = new RiverRaceClanDto
+                    {
+                        Tag = t,
+                        Name = GetJsonString(singleEl, "name"),
+                        Fame = GetJsonInt(singleEl, "fame"),
+                        RepairPoints = GetJsonInt(singleEl, "repairPoints"),
+                        DecksUsed = GetJsonInt(singleEl, "decksUsed"),
+                        DecksUsedToday = GetJsonInt(singleEl, "decksUsedToday"),
+                        BoatAttacks = GetJsonInt(singleEl, "boatAttacks"),
+                        Crowns = GetJsonInt(singleEl, "crowns"),
+                        PeriodPoints = GetJsonInt(singleEl, "periodPoints"),
+                        Participants = []
+                    };
+                }
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetJsonProperty(JsonElement el, string name, out JsonElement value)
+    {
+        foreach (var p in el.EnumerateObject())
+        {
+            if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = p.Value;
+                return true;
             }
         }
 
-        return true;
+        value = default;
+        return false;
+    }
+
+    private static string GetJsonString(JsonElement el, string name)
+    {
+        if (!TryGetJsonProperty(el, name, out var p))
+            return string.Empty;
+
+        return p.ValueKind == JsonValueKind.String ? p.GetString() ?? string.Empty : string.Empty;
+    }
+
+    private static int GetJsonInt(JsonElement el, string name)
+    {
+        if (!TryGetJsonProperty(el, name, out var p))
+            return 0;
+
+        if (p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var i))
+            return i;
+
+        if (p.ValueKind == JsonValueKind.String && int.TryParse(p.GetString(), out i))
+            return i;
+
+        return 0;
     }
 
     private static int ScoreClanWarLog(ClanWarLogDto? dto)
