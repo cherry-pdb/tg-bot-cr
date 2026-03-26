@@ -441,10 +441,13 @@ public sealed class BotUpdateHandler : IUpdateHandler
             var medalsNote = clan.PeriodPoints > 0
                 ? "очки периода (медали)"
                 : "слава + ремонт (очки)";
+            var sumDecks = clan.Participants.Sum(p => p.DecksUsedToday);
+            var avgMedals = (double)medals / sumDecks;
 
             sb.AppendLine($"{i + 1}. {clan.Name} {clan.Tag}");
             sb.AppendLine($"   {medalsNote}: {medals}");
-            sb.AppendLine($"   Колод отыграно всего: {clan.Participants.Sum(p => p.DecksUsedToday)}/200");
+            sb.AppendLine($"   Колод отыграно всего: {sumDecks}/200");
+            sb.AppendLine($"   Среднее кол-во медалей за игру: {avgMedals.ToString("F2")}");
         }
 
         await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.None, ct);
