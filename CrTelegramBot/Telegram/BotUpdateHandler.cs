@@ -444,7 +444,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
             sb.AppendLine($"{i + 1}. {clan.Name} {clan.Tag}");
             sb.AppendLine($"   {medalsNote}: {medals}");
-            sb.AppendLine($"   Колод отыграно всего: {clan.DecksUsed}");
+            sb.AppendLine($"   Колод отыграно всего: {clan.Participants.Sum(p => p.DecksUsedToday)/200}");
         }
 
         await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.None, ct);
