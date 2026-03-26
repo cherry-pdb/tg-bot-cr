@@ -439,23 +439,26 @@ public sealed class BotUpdateHandler : IUpdateHandler
                 ? clan.PeriodPoints
                 : clan.Fame + clan.RepairPoints;
             var medalsNote = clan.PeriodPoints > 0
-                ? "очки периода (медали)"
-                : "слава + ремонт (очки)";
+                ? "Медали периода"
+                : "Слава + ремонт (очки)";
             var sumDecks = clan.Participants.Sum(p => p.DecksUsedToday);
             var avgMedals = (double)medals / sumDecks;
             var unplayedPlayers = clan.Participants.Where(p => p.DecksUsedToday is > 0 and < 4);
             var unusedDecks = unplayedPlayers.Sum(p => p.DecksUsedToday);
 
-            sb.AppendLine($"{i + 1}. {clan.Name} {clan.Tag}");
-            sb.AppendLine($"   {medalsNote}: {medals}");
+            var nameEsc = System.Net.WebUtility.HtmlEncode(clan.Name);
+            var tagEsc = System.Net.WebUtility.HtmlEncode(clan.Tag);
+            sb.AppendLine($"{i + 1}. <b>{nameEsc} {tagEsc}</b>");
+            sb.AppendLine($"   <b>{System.Net.WebUtility.HtmlEncode(medalsNote)}: {medals}</b>");
             sb.AppendLine($"   Колод отыграно всего: {sumDecks}/200");
             sb.AppendLine($"   Среднее кол-во медалей за игру: {avgMedals.ToString("F2")}");
             sb.AppendLine($"   Максимально клан может набрать: {medals + unusedDecks * 200}");
             sb.AppendLine($"   Кол-во недоигранных колод: {unusedDecks}");
             sb.AppendLine($"   Кол-во человек недоиграли: {unplayedPlayers.Count()}");
+            sb.AppendLine();
         }
 
-        await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.None, ct);
+        await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.Html, ct);
     }
 
     private async Task SendTextChunksAsync(long chatId, string text, ParseMode parseMode, CancellationToken ct)
