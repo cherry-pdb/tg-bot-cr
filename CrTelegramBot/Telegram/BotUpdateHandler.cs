@@ -417,7 +417,16 @@ public sealed class BotUpdateHandler : IUpdateHandler
             return;
         }
 
-        var ordered = race.Clans.OrderByDescending(x => x.Fame + x.RepairPoints).ToList();
+        // В речной гонке участвует до 5 кланов. Loose-парсер иногда дублирует записи — оставляем по одному на тег и топ-5.
+        const int maxRiverRaceClans = 5;
+        var ordered = race.Clans
+            .Where(c => !string.IsNullOrWhiteSpace(c.Tag))
+            .GroupBy(c => ClashRoyaleApiClient.NormalizeTag(c.Tag))
+            .Select(g => g.OrderByDescending(x => x.Fame + x.RepairPoints).First())
+            .OrderByDescending(x => x.Fame + x.RepairPoints)
+            .Take(maxRiverRaceClans)
+            .ToList();
+
         var sb = new StringBuilder();
         sb.AppendLine("⚔️ Что с КВ?");
         sb.AppendLine($"Состояние: {race.State ?? "n/a"}, период: {race.PeriodType ?? "n/a"}");
@@ -431,7 +440,24 @@ public sealed class BotUpdateHandler : IUpdateHandler
             sb.AppendLine($"   Колод сегодня: {clan.DecksUsedToday}, всего: {clan.DecksUsed}");
         }
 
-        await _botClient.SendMessage(chatId, sb.ToString(), cancellationToken: ct);
+        await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.None, ct);
+    }
+
+    /// <summary>Telegram ограничивает длину текста 4096 символами; длинный ответ шлём несколькими сообщениями.</summary>
+    private async Task SendTextChunksAsync(long chatId, string text, ParseMode parseMode, CancellationToken ct)
+    {
+        const int maxLen = 4096;
+        if (text.Length <= maxLen)
+        {
+            await _botClient.SendMessage(chatId, text, parseMode: parseMode, cancellationToken: ct);
+            return;
+        }
+
+        for (var offset = 0; offset < text.Length; offset += maxLen)
+        {
+            var len = Math.Min(maxLen, text.Length - offset);
+            await _botClient.SendMessage(chatId, text.AsSpan(offset, len).ToString(), parseMode: parseMode, cancellationToken: ct);
+        }
     }
     
     private async Task HandleBlacklistAsync(string playerTag, BotDbContext db, CancellationToken ct)
