@@ -1,0 +1,31 @@
+﻿version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: crbot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: crtelegrambot
+      POSTGRES_USER: crbot
+      POSTGRES_PASSWORD: crbot
+    volumes:
+      - crbot_pgdata:/var/lib/postgresql/data
+
+  bot:
+    build:
+      context: .
+      dockerfile: ./CrTelegramBot/Dockerfile
+    container_name: crtelegrambot
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=crtelegrambot;Username=crbot;Password=crbot"
+      BotConfig__ClashRoyaleApiToken: ${CLASH_TOKEN}
+      BotConfig__TelegramBotToken: ${TELEGRAM_TOKEN}
+
+volumes:
+  crbot_pgdata:
