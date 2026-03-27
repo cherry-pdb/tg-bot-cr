@@ -144,7 +144,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
                 break;
 
             case ParsedCommandKind.Blacklist:
-                if (!isLeader || message.Chat.Type != ChatType.Private) { await DenyAsync(message.Chat.Id, ct); return; }
+                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
                 await HandleBlacklistAsync(command.PlayerTag!, db, ct);
                 await _botClient.SendMessage(message.Chat.Id, $"⛔ Игрок {ClashRoyaleApiClient.NormalizeTag(command.PlayerTag!)} добавлен в ЧС.", cancellationToken: ct);
                 break;
@@ -190,8 +190,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("- Участники");
         sb.AppendLine("- Что с КВ? / Что с КВ");
         sb.AppendLine("- Напомни о КВ");
-
-        sb.AppendLine(chatType == ChatType.Private ? "- В ЧС#ТЕГ" : "- В ЧС#ТЕГ (только в ЛС боту)");
+        sb.AppendLine("- В ЧС#ТЕГ");
 
         return sb.ToString().TrimEnd();
     }
@@ -220,10 +219,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("• <b><u>Участники</u></b> — список участников клана с отметкой, кто привязан к Telegram.");
         sb.AppendLine("• <b><u>Что с КВ</u></b> — текущий статус КВ и кланы в рейсе.");
         sb.AppendLine("• <b><u>Напомни о КВ</u></b> — включить автоматические напоминания о КВ в основной чат.");
-
-        sb.AppendLine(chatType == ChatType.Private
-            ? "• <b><u>В ЧС#ТЕГ</u></b> — добавить игрока по тегу в чёрный список (будут приходить предупреждения при его входе в клан)."
-            : "• <b><u>В ЧС#ТЕГ</u></b> — добавить игрока в ЧС (команда работает только в ЛС боту).");
+        sb.AppendLine("• <b><u>В ЧС#ТЕГ</u></b> — добавить игрока по тегу в чёрный список (будут приходить предупреждения при его входе в клан).");
 
         if (!isLeader)
         {
@@ -449,7 +445,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
             var nameEsc = System.Net.WebUtility.HtmlEncode(clan.Name);
             var tagEsc = System.Net.WebUtility.HtmlEncode(clan.Tag);
             sb.AppendLine($"{i + 1}. <b>{nameEsc} {tagEsc}</b>");
-            sb.AppendLine($"   <b>{System.Net.WebUtility.HtmlEncode(medalsNote)}: {medals}</b>");
+            sb.AppendLine($"   {System.Net.WebUtility.HtmlEncode(medalsNote)}: {medals}");
             sb.AppendLine($"   Колод отыграно всего: {sumDecks}/200");
             sb.AppendLine($"   Среднее кол-во медалей за игру: {avgMedals.ToString("F2")}");
             sb.AppendLine($"   Максимально клан может набрать: {medals + unusedDecks * 200}");
