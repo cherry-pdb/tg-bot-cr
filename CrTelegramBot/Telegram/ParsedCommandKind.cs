@@ -14,5 +14,8 @@ public enum ParsedCommandKind
     Profile,
     Chests,
     Top,
-    InTop
+    InTop,
+    AddLeader,
+    RemoveLeader,
+    Leaders
 }

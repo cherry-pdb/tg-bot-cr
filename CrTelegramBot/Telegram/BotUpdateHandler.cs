@@ -93,10 +93,25 @@ public sealed class BotUpdateHandler : IUpdateHandler
         if (command is null)
             return;
 
-        var isLeader = leaderService.IsLeader(message.From);
+        var isLeader = await leaderService.IsLeaderAsync(message.From, ct);
         
         switch (command.Kind)
         {
+            case ParsedCommandKind.AddLeader:
+                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                await HandleAddLeaderAsync(message, command, leaderService, ct);
+                break;
+
+            case ParsedCommandKind.RemoveLeader:
+                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                await HandleRemoveLeaderAsync(message, command, leaderService, ct);
+                break;
+
+            case ParsedCommandKind.Leaders:
+                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                await HandleLeadersAsync(message.Chat.Id, leaderService, ct);
+                break;
+
             case ParsedCommandKind.Connect:
                 if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
                 await HandleConnectAsync(message, command, userLinkService, ct);
@@ -191,6 +206,9 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("- Что с КВ? / Что с КВ");
         sb.AppendLine("- Напомни о КВ");
         sb.AppendLine("- В ЧС#ТЕГ");
+        sb.AppendLine("- Добавить руководителя (ответом) / Добавить руководителя@username");
+        sb.AppendLine("- Удалить руководителя (ответом) / Удалить руководителя@username");
+        sb.AppendLine("- Руководители");
 
         return sb.ToString().TrimEnd();
     }
@@ -220,6 +238,9 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("• <b><u>Что с КВ</u></b> — текущий статус КВ и кланы в рейсе.");
         sb.AppendLine("• <b><u>Напомни о КВ</u></b> — включить автоматические напоминания о КВ в основной чат.");
         sb.AppendLine("• <b><u>В ЧС#ТЕГ</u></b> — добавить игрока по тегу в чёрный список (будут приходить предупреждения при его входе в клан).");
+        sb.AppendLine("• <b><u>Добавить руководителя</u></b> — добавить руководителя (ответом на сообщение) или <b>Добавить руководителя@username</b>.");
+        sb.AppendLine("• <b><u>Удалить руководителя</u></b> — удалить руководителя (ответом на сообщение) или <b>Удалить руководителя@username</b>.");
+        sb.AppendLine("• <b><u>Руководители</u></b> — показать текущий список руководителей (из настроек бота).");
 
         if (!isLeader)
         {
@@ -973,4 +994,85 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
     private Task DenyAsync(long chatId, CancellationToken ct) =>
         _botClient.SendMessage(chatId, "⛔ Эта команда доступна только руководителям.", cancellationToken: ct);
+
+    private async Task HandleLeadersAsync(long chatId, LeaderService leaderService, CancellationToken ct)
+    {
+        var leaders = await leaderService.GetLeadersAsync(ct);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("👑 Руководители (настройка бота)");
+        sb.AppendLine();
+
+        if (leaders.UserIds.Length == 0 && leaders.Usernames.Length == 0)
+        {
+            sb.AppendLine("— список пуст —");
+            await _botClient.SendMessage(chatId, sb.ToString().TrimEnd(), cancellationToken: ct);
+            return;
+        }
+
+        if (leaders.Usernames.Length > 0)
+        {
+            sb.AppendLine("По @username:");
+            foreach (var u in leaders.Usernames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                sb.AppendLine($"- @{u}");
+            sb.AppendLine();
+        }
+
+        if (leaders.UserIds.Length > 0)
+        {
+            sb.AppendLine("По Telegram ID:");
+            foreach (var id in leaders.UserIds.OrderBy(x => x))
+                sb.AppendLine($"- {id}");
+        }
+
+        await _botClient.SendMessage(chatId, sb.ToString().TrimEnd(), cancellationToken: ct);
+    }
+
+    private async Task HandleAddLeaderAsync(Message message, ParsedCommand command, LeaderService leaderService, CancellationToken ct)
+    {
+        var target = message.ReplyToMessage?.From;
+        var targetId = target?.Id;
+        var targetUsername = target?.Username;
+
+        if (!string.IsNullOrWhiteSpace(command.TelegramUsername))
+            targetUsername = command.TelegramUsername;
+
+        if (targetId is null && string.IsNullOrWhiteSpace(targetUsername))
+        {
+            await _botClient.SendMessage(message.Chat.Id, "Используй: ответом на сообщение «Добавить руководителя» или «Добавить руководителя@username».", cancellationToken: ct);
+            return;
+        }
+
+        var (changed, current) = await leaderService.AddLeaderAsync(targetId, targetUsername, ct);
+        var who = !string.IsNullOrWhiteSpace(targetUsername) ? $"@{targetUsername.Trim().TrimStart('@')}" : targetId?.ToString() ?? "—";
+        var text = changed
+            ? $"✅ Добавлен руководитель: {who}\n\nВсего: {current.Usernames.Length} @username, {current.UserIds.Length} ID."
+            : $"ℹ️ Уже есть в списке руководителей: {who}";
+
+        await _botClient.SendMessage(message.Chat.Id, text, cancellationToken: ct);
+    }
+
+    private async Task HandleRemoveLeaderAsync(Message message, ParsedCommand command, LeaderService leaderService, CancellationToken ct)
+    {
+        var target = message.ReplyToMessage?.From;
+        var targetId = target?.Id;
+        var targetUsername = target?.Username;
+
+        if (!string.IsNullOrWhiteSpace(command.TelegramUsername))
+            targetUsername = command.TelegramUsername;
+
+        if (targetId is null && string.IsNullOrWhiteSpace(targetUsername))
+        {
+            await _botClient.SendMessage(message.Chat.Id, "Используй: ответом на сообщение «Удалить руководителя» или «Удалить руководителя@username».", cancellationToken: ct);
+            return;
+        }
+
+        var (changed, current) = await leaderService.RemoveLeaderAsync(targetId, targetUsername, ct);
+        var who = !string.IsNullOrWhiteSpace(targetUsername) ? $"@{targetUsername.Trim().TrimStart('@')}" : targetId?.ToString() ?? "—";
+        var text = changed
+            ? $"✅ Удалён руководитель: {who}\n\nОсталось: {current.Usernames.Length} @username, {current.UserIds.Length} ID."
+            : $"ℹ️ Не найден в списке руководителей: {who}";
+
+        await _botClient.SendMessage(message.Chat.Id, text, cancellationToken: ct);
+    }
 }
