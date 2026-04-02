@@ -31,6 +31,7 @@ builder.Services.AddScoped<UserLinkService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ClanService>();
 builder.Services.AddScoped<WarService>();
+builder.Services.AddSingleton<AutoDeleteService>();
 
 builder.Services.AddSingleton<CommandParser>();
 builder.Services.AddSingleton<BotUpdateHandler>();

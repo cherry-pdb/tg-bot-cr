@@ -21,6 +21,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
     private readonly BotConfig _config;
     private readonly CommandParser _parser;
     private readonly ILogger<BotUpdateHandler> _logger;
+    private readonly AutoDeleteService _autoDelete;
 
     public BotUpdateHandler(
         ITelegramBotClient botClient,
@@ -28,6 +29,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         ClashRoyaleApiClient api,
         BotConfig config,
         CommandParser parser,
+        AutoDeleteService autoDelete,
         ILogger<BotUpdateHandler> logger)
     {
         _botClient = botClient;
@@ -35,6 +37,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         _api = api;
         _config = config;
         _parser = parser;
+        _autoDelete = autoDelete;
         _logger = logger;
     }
     
@@ -62,8 +65,9 @@ public sealed class BotUpdateHandler : IUpdateHandler
             {
                 _config.MainChatId = mes.Chat.Id;
                 
-                await botClient.SendMessage(
+                await SendBotMessageAsync(
                     mes.Chat.Id,
+                    mes.Chat.Type,
                     "Updated successfully",
                     cancellationToken: ct);
             }
@@ -84,7 +88,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
         if (TryHandleFunReply(text, out var funReply))
         {
-            await _botClient.SendMessage(message.Chat.Id, funReply, cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, funReply, cancellationToken: ct);
             return;
         }
 
@@ -98,85 +102,120 @@ public sealed class BotUpdateHandler : IUpdateHandler
         switch (command.Kind)
         {
             case ParsedCommandKind.AddLeader:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
                 await HandleAddLeaderAsync(message, command, leaderService, ct);
                 break;
 
             case ParsedCommandKind.RemoveLeader:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
                 await HandleRemoveLeaderAsync(message, command, leaderService, ct);
                 break;
 
             case ParsedCommandKind.Leaders:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
-                await HandleLeadersAsync(message.Chat.Id, leaderService, ct);
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
+                await HandleLeadersAsync(message.Chat.Id, message.Chat.Type, leaderService, ct);
                 break;
 
             case ParsedCommandKind.Connect:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
                 await HandleConnectAsync(message, command, userLinkService, ct);
                 break;
 
             case ParsedCommandKind.Disconnect:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
                 await HandleDisconnectAsync(message, command, db, userLinkService, ct);
                 break;
 
             case ParsedCommandKind.EnableNotifications:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
                 await notificationService.SetLeaderNotificationsAsync(message.From!.Id, true, ct);
-                await _botClient.SendMessage(message.Chat.Id, "✅ Личные уведомления включены.", cancellationToken: ct);
+                await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "✅ Личные уведомления включены.", cancellationToken: ct);
                 break;
 
             case ParsedCommandKind.DisableNotifications:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
                 await notificationService.SetLeaderNotificationsAsync(message.From!.Id, false, ct);
-                await _botClient.SendMessage(message.Chat.Id, "✅ Личные уведомления отключены.", cancellationToken: ct);
+                await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "✅ Личные уведомления отключены.", cancellationToken: ct);
                 break;
 
             case ParsedCommandKind.Commands:
-                await _botClient.SendMessage(
+                await SendBotMessageAsync(
                     message.Chat.Id,
+                    message.Chat.Type,
                     BuildCommandsHelpDetailed(isLeader, message.Chat.Type),
                     parseMode: ParseMode.Html,
                     cancellationToken: ct);
                 break;
 
             case ParsedCommandKind.Participants:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
-                await HandleParticipantsAsync(message.Chat.Id, clanService, db, ct);
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
+                await HandleParticipantsAsync(message.Chat.Id, message.Chat.Type, clanService, db, ct);
                 break;
 
             case ParsedCommandKind.WarStatus:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
-                await HandleWarStatusAsync(message.Chat.Id, warService, ct);
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
+                await HandleWarStatusAsync(message.Chat.Id, message.Chat.Type, warService, ct);
                 break;
 
             case ParsedCommandKind.RemindWar:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
                 await SetWarReminderEnabledAsync(db, true, ct);
-                await _botClient.SendMessage(message.Chat.Id, "✅ Напоминания о КВ включены.", cancellationToken: ct);
+                await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "✅ Напоминания о КВ включены.", cancellationToken: ct);
                 break;
 
             case ParsedCommandKind.Blacklist:
-                if (!isLeader) { await DenyAsync(message.Chat.Id, ct); return; }
-                await HandleBlacklistAsync(command.PlayerTag!, db, ct);
-                await _botClient.SendMessage(message.Chat.Id, $"⛔ Игрок {ClashRoyaleApiClient.NormalizeTag(command.PlayerTag!)} добавлен в ЧС.", cancellationToken: ct);
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
+                {
+                    var tag = await ResolveBlackListPlayerTagAsync(message, command, db, ct);
+                    if (tag is null)
+                    {
+                        await SendBotMessageAsync(
+                            message.Chat.Id,
+                            message.Chat.Type,
+                            "Не удалось определить тег: укажи В ЧС#ТЕГ, ответь на сообщение пользователя или В ЧС@username (нужна привязка Подключить).",
+                            cancellationToken: ct);
+                        break;
+                    }
+
+                    await HandleBlacklistAsync(tag, db, ct);
+                    await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, $"⛔ Игрок {tag} добавлен в ЧС.", cancellationToken: ct);
+                }
+                break;
+
+            case ParsedCommandKind.RemoveBlacklist:
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
+                {
+                    var tag = await ResolveBlackListPlayerTagAsync(message, command, db, ct);
+                    if (tag is null)
+                    {
+                        await SendBotMessageAsync(
+                            message.Chat.Id,
+                            message.Chat.Type,
+                            "Не удалось определить тег: укажи Из ЧС#ТЕГ, ответь на сообщение пользователя или Из ЧС@username (нужна привязка Подключить).",
+                            cancellationToken: ct);
+                        break;
+                    }
+
+                    var removed = await HandleRemoveBlacklistAsync(tag, db, ct);
+                    await SendBotMessageAsync(
+                        message.Chat.Id,
+                        message.Chat.Type,
+                        removed
+                            ? $"✅ Игрок {tag} убран из ЧС."
+                            : $"ℹ️ Игрок {tag} не был в ЧС.",
+                        cancellationToken: ct);
+                }
                 break;
 
             case ParsedCommandKind.Profile:
                 await HandleProfileAsync(message, command, db, ct);
                 break;
 
-            case ParsedCommandKind.Chests:
-                await HandleChestsAsync(message, command, db, ct);
-                break;
-
             case ParsedCommandKind.Top:
-                await HandleTopAsync(message.Chat.Id, command.TopLimit, ct);
+                await HandleTopAsync(message.Chat.Id, message.Chat.Type, command.TopLimit, ct);
                 break;
             case ParsedCommandKind.InTop:
-                await HandleInTopAsync(message.Chat.Id, ct);
+                await HandleInTopAsync(message.Chat.Id, message.Chat.Type, ct);
                 break;
         }
     }
@@ -190,7 +229,6 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine();
         sb.AppendLine("Для всех:");
         sb.AppendLine("- Профиль / Профиль#ТЕГ");
-        sb.AppendLine("- Сундуки / Сундуки#ТЕГ");
         sb.AppendLine("- Топ / Топ50");
         sb.AppendLine("- Втопе");
         sb.AppendLine("- Команды");
@@ -221,8 +259,6 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("Для всех:");
         sb.AppendLine("• <b><u>Профиль</u></b> — показать профиль подключённого игрока (через Подключить/Привязать).");
         sb.AppendLine("• <b><u>Профиль#ТЕГ</u></b> — показать профиль игрока по тегу без привязки.");
-        sb.AppendLine("• <b><u>Сундуки</u></b> — показать очередь сундуков для подключённого профиля.");
-        sb.AppendLine("• <b><u>Сундуки#ТЕГ</u></b> — показать очередь сундуков по тегу без привязки.");
         sb.AppendLine("• <b><u>Топ / ТопN</u></b> — показать топ N кланов по кубкам в регионе (по умолчанию топ30).");
         sb.AppendLine("• <b><u>Втопе</u></b> — показать место клана в топе по кубкам и по КВ.");
         sb.AppendLine("• <b><u>Команды</u></b> — краткий список команд и их описание.");
@@ -237,7 +273,8 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("• <b><u>Участники</u></b> — список участников клана с отметкой, кто привязан к Telegram.");
         sb.AppendLine("• <b><u>Что с КВ</u></b> — текущий статус КВ и кланы в рейсе.");
         sb.AppendLine("• <b><u>Напомни о КВ</u></b> — включить автоматические напоминания о КВ в основной чат.");
-        sb.AppendLine("• <b><u>В ЧС#ТЕГ</u></b> — добавить игрока по тегу в чёрный список (будут приходить предупреждения при его входе в клан).");
+        sb.AppendLine("• <b><u>В ЧС#ТЕГ</u></b> — добавить в чёрный список по тегу; также <b>В ЧС</b> ответом на сообщение или <b>В ЧС@username</b>, если есть привязка.");
+        sb.AppendLine("• <b><u>Из ЧС#ТЕГ</u></b> — убрать из чёрного списка по тегу; также <b>Из ЧС</b> ответом или <b>Из ЧС@username</b>, если есть привязка.");
         sb.AppendLine("• <b><u>Добавить руководителя</u></b> — добавить руководителя (ответом на сообщение) или <b>Добавить руководителя@username</b>.");
         sb.AppendLine("• <b><u>Удалить руководителя</u></b> — удалить руководителя (ответом на сообщение) или <b>Удалить руководителя@username</b>.");
         sb.AppendLine("• <b><u>Руководители</u></b> — показать текущий список руководителей (из настроек бота).");
@@ -258,7 +295,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         
         if (player is null)
         {
-            await _botClient.SendMessage(message.Chat.Id, "Игрок не найден в Clash Royale API.", cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Игрок не найден в Clash Royale API.", cancellationToken: ct);
             return;
         }
 
@@ -281,7 +318,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
             if (seen is null)
             {
-                await _botClient.SendMessage(message.Chat.Id, $"Не вижу пользователя @{username} в истории сообщений. Пусть он напишет в чат, либо подключай ответом на сообщение.", cancellationToken: ct);
+                await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, $"Не вижу пользователя @{username} в истории сообщений. Пусть он напишет в чат, либо подключай ответом на сообщение.", cancellationToken: ct);
                 return;
             }
 
@@ -289,11 +326,11 @@ public sealed class BotUpdateHandler : IUpdateHandler
         }
         else
         {
-            await _botClient.SendMessage(message.Chat.Id, "Используй: ответом на сообщение 'Подключить#ТЕГ' или в чат 'Подключить#ТЕГ@username'.", cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Используй: ответом на сообщение 'Подключить#ТЕГ' или в чат 'Подключить#ТЕГ@username'.", cancellationToken: ct);
             return;
         }
 
-        await _botClient.SendMessage(message.Chat.Id, $"✅ Подключено: {player.Name} {player.Tag}", cancellationToken: ct);
+        await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, $"✅ Подключено: {player.Name} {player.Tag}", cancellationToken: ct);
     }
 
     private async Task HandleDisconnectAsync(Message message, ParsedCommand command, BotDbContext db, UserLinkService userLinkService, CancellationToken ct)
@@ -323,12 +360,12 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
         if (link is null)
         {
-            await _botClient.SendMessage(message.Chat.Id, "Связка не найдена.", cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Связка не найдена.", cancellationToken: ct);
             return;
         }
 
         await userLinkService.RemoveAsync(link, ct);
-        await _botClient.SendMessage(message.Chat.Id, $"✅ Отключено: {link.TelegramDisplayName} ← {link.PlayerTag}", cancellationToken: ct);
+        await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, $"✅ Отключено: {link.TelegramDisplayName} ← {link.PlayerTag}", cancellationToken: ct);
     }
 
     private static async Task UpsertSeenUserAsync(Message message, BotDbContext db, CancellationToken ct)
@@ -362,13 +399,13 @@ public sealed class BotUpdateHandler : IUpdateHandler
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task HandleParticipantsAsync(long chatId, ClanService clanService, BotDbContext db, CancellationToken ct)
+    private async Task HandleParticipantsAsync(long chatId, ChatType chatType, ClanService clanService, BotDbContext db, CancellationToken ct)
     {
         var clan = await clanService.GetClanAsync(ct);
 
         if (clan is null)
         {
-            await _botClient.SendMessage(chatId, "Не удалось загрузить состав клана.", cancellationToken: ct);
+            await SendBotMessageAsync(chatId, chatType, "Не удалось загрузить состав клана.", cancellationToken: ct);
             return;
         }
 
@@ -417,20 +454,21 @@ public sealed class BotUpdateHandler : IUpdateHandler
             .Select(x => x.text)
             .ToList();
 
-        await _botClient.SendMessage(
+        await SendBotMessageAsync(
             chatId,
+            chatType,
             "👥 Участники клана\n\n" + string.Join("\n", lines.Take(50)),
             parseMode: ParseMode.Html,
             cancellationToken: ct);
     }
     
-    private async Task HandleWarStatusAsync(long chatId, WarService warService, CancellationToken ct)
+    private async Task HandleWarStatusAsync(long chatId, ChatType chatType, WarService warService, CancellationToken ct)
     {
         var race = await warService.GetStatusAsync(ct);
         
         if (race?.Clans is null || race.Clans.Count == 0)
         {
-            await _botClient.SendMessage(chatId, "Не удалось загрузить данные КВ.", cancellationToken: ct);
+            await SendBotMessageAsync(chatId, chatType, "Не удалось загрузить данные КВ.", cancellationToken: ct);
             return;
         }
 
@@ -475,22 +513,22 @@ public sealed class BotUpdateHandler : IUpdateHandler
             sb.AppendLine();
         }
 
-        await SendTextChunksAsync(chatId, sb.ToString(), parseMode: ParseMode.Html, ct);
+        await SendTextChunksAsync(chatId, chatType, sb.ToString(), parseMode: ParseMode.Html, ct);
     }
 
-    private async Task SendTextChunksAsync(long chatId, string text, ParseMode parseMode, CancellationToken ct)
+    private async Task SendTextChunksAsync(long chatId, ChatType chatType, string text, ParseMode parseMode, CancellationToken ct)
     {
         const int maxLen = 4096;
         if (text.Length <= maxLen)
         {
-            await _botClient.SendMessage(chatId, text, parseMode: parseMode, cancellationToken: ct);
+            await SendBotMessageAsync(chatId, chatType, text, parseMode: parseMode, cancellationToken: ct);
             return;
         }
 
         for (var offset = 0; offset < text.Length; offset += maxLen)
         {
             var len = Math.Min(maxLen, text.Length - offset);
-            await _botClient.SendMessage(chatId, text.AsSpan(offset, len).ToString(), parseMode: parseMode, cancellationToken: ct);
+            await SendBotMessageAsync(chatId, chatType, text.AsSpan(offset, len).ToString(), parseMode: parseMode, cancellationToken: ct);
         }
     }
     
@@ -506,6 +544,51 @@ public sealed class BotUpdateHandler : IUpdateHandler
         }
     }
 
+    private async Task<bool> HandleRemoveBlacklistAsync(string playerTag, BotDbContext db, CancellationToken ct)
+    {
+        var tag = ClashRoyaleApiClient.NormalizeTag(playerTag);
+        var existing = await db.BlacklistedPlayers.FirstOrDefaultAsync(x => x.PlayerTag == tag, ct);
+
+        if (existing is null)
+            return false;
+
+        db.BlacklistedPlayers.Remove(existing);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    private async Task<string?> ResolveBlackListPlayerTagAsync(Message message, ParsedCommand command, BotDbContext db, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(command.PlayerTag))
+            return ClashRoyaleApiClient.NormalizeTag(command.PlayerTag);
+
+        if (!string.IsNullOrWhiteSpace(command.TelegramUsername))
+        {
+            var username = command.TelegramUsername.Trim().TrimStart('@');
+            var usernameLower = username.ToLowerInvariant();
+            var seenCandidates = await db.ChatUsers.AsNoTracking()
+                .Where(x => x.TelegramUsername != "" && x.TelegramUsername.ToLower() == usernameLower)
+                .ToListAsync(ct);
+            var seen = seenCandidates
+                .OrderByDescending(x => x.LastSeenAt)
+                .FirstOrDefault();
+
+            if (seen is null)
+                return null;
+
+            var link = await db.UserLinks.AsNoTracking().FirstOrDefaultAsync(x => x.TelegramUserId == seen.TelegramUserId, ct);
+            return link is null ? null : ClashRoyaleApiClient.NormalizeTag(link.PlayerTag);
+        }
+
+        if (message.ReplyToMessage?.From is { } from)
+        {
+            var link = await db.UserLinks.AsNoTracking().FirstOrDefaultAsync(x => x.TelegramUserId == from.Id, ct);
+            return link is null ? null : ClashRoyaleApiClient.NormalizeTag(link.PlayerTag);
+        }
+
+        return null;
+    }
+
     private async Task HandleProfileAsync(Message message, ParsedCommand command, BotDbContext db, CancellationToken ct)
     {
         var tag = command.PlayerTag;
@@ -515,7 +598,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
         if (tag is null)
         {
-            await _botClient.SendMessage(message.Chat.Id, "Профиль не подключён. Используй Профиль#ТЕГ.", cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Профиль не подключён. Используй Профиль#ТЕГ.", cancellationToken: ct);
             return;
         }
 
@@ -523,7 +606,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         
         if (player is null)
         {
-            await _botClient.SendMessage(message.Chat.Id, "Не удалось загрузить профиль.", cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Не удалось загрузить профиль.", cancellationToken: ct);
             return;
         }
 
@@ -642,7 +725,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
             }
         }
 
-        await _botClient.SendMessage(message.Chat.Id, sb.ToString().TrimEnd(), cancellationToken: ct);
+        await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, sb.ToString().TrimEnd(), cancellationToken: ct);
         return;
 
         int? GetBadgeProgress(string name) =>
@@ -713,129 +796,8 @@ public sealed class BotUpdateHandler : IUpdateHandler
             _ => apiRole ?? "—"
         };
     }
-    
-    private async Task HandleChestsAsync(Message message, ParsedCommand command, BotDbContext db, CancellationToken ct)
-    {
-        var tag = command.PlayerTag;
-        
-        if (tag is null && message.From is not null)
-            tag = (await db.UserLinks.AsNoTracking().FirstOrDefaultAsync(x => x.TelegramUserId == message.From.Id, ct))?.PlayerTag;
 
-        if (tag is null)
-        {
-            await _botClient.SendMessage(message.Chat.Id, "Сначала укажи тег: Сундуки#ТЕГ или подключи профиль.", cancellationToken: ct);
-            return;
-        }
-
-        var player = await _api.GetPlayerAsync(tag, ct);
-        
-        if (player is null)
-        {
-            await _botClient.SendMessage(message.Chat.Id, "Не удалось загрузить профиль игрока для сундуков.", cancellationToken: ct);
-            return;
-        }
-
-        var chests = await _api.GetUpcomingChestsAsync(tag, ct);
-        
-        if (chests is null)
-        {
-            await _botClient.SendMessage(message.Chat.Id, "Не удалось загрузить сундуки.", cancellationToken: ct);
-            return;
-        }
-
-        var sb = new StringBuilder();
-        var items = (chests.Items)
-            .OrderBy(x => x.Index)
-            .ToList();
-        sb.AppendLine($"Сундуки игрока {player.Name} {player.Tag}");
-        sb.AppendLine();
-
-        var next = items.FirstOrDefault(x => x.Index == 0) ?? items.FirstOrDefault();
-        var after = items.FirstOrDefault(x => x.Index == 1) ?? items.Skip(1).FirstOrDefault();
-
-        if (next is not null)
-            sb.AppendLine($"Следующий: {ChestDisplay(next)}");
-        
-        if (after is not null)
-            sb.AppendLine($"Далее: {ChestDisplay(after)}");
-        
-        sb.AppendLine();
-        sb.AppendLine("Затем:");
-
-        var show = items
-            .Where(x => x.Index is >= 2 and <= 10)
-            .Concat(items.Where(x => x.Index is 14 or 37 or 92 or 688 or 689 or 690))
-            .GroupBy(x => x.Index)
-            .Select(g => g.First())
-            .OrderBy(x => x.Index)
-            .ToList();
-
-        if (show.Count == 0)
-            sb.AppendLine("—");
-        else
-            foreach (var x in show)
-                sb.AppendLine($"{x.Index} - {ChestDisplay(x)}");
-
-        var text = sb.ToString().TrimEnd();
-        await _botClient.SendMessage(message.Chat.Id, text, cancellationToken: ct);
-        return;
-
-        string ChestDisplay(ChestItemDto x)
-        {
-            var name = (x.Name ?? "—").Trim();
-            var hours = GetChestHours(name);
-            
-            return hours is null ? name : $"{name} ({hours}ч)";
-        }
-    }
-
-    private static int? GetChestHours(string? apiChestName)
-    {
-        var n = (apiChestName ?? string.Empty).Trim().ToLowerInvariant();
-
-        if (n.Contains("gold") || n.Contains("золот"))
-            return 8;
-        
-        if (n.Contains("silver") || n.Contains("сереб"))
-            return 3;
-        
-        if (n.Contains("giant") || n.Contains("огром"))
-            return 12;
-        
-        if (n.Contains("magical") || n.Contains("магич"))
-            return 12;
-        
-        if (n.Contains("epic") || n.Contains("эпич"))
-            return 12;
-        
-        if (n.Contains("legendary") || n.Contains("леген"))
-            return 24;
-        
-        if (n.Contains("mega lightning") || n.Contains("мегасундук") || n.Contains("молни"))
-            return 24;
-        
-        if (n.Contains("lightning") || n.Contains("молни"))
-            return 24;
-        
-        if (n.Contains("overflowing") || n.Contains("переполн"))
-            return 12;
-        
-        if (n.Contains("fortune") || n.Contains("джокер"))
-            return 24;
-        
-        if (n.Contains("tower troop") || n.Contains("башн"))
-            return 0;
-        
-        if (n.Contains("gold crate") || n.Contains("ящик") || n.Contains("crate"))
-            return 3;
-        
-        if (n.Contains("plentiful") || n.Contains("увесист"))
-            return 8;
-
-        return null;
-    }
-
-    private async Task HandleTopAsync(long chatId, int? requestedLimit, CancellationToken ct)
+    private async Task HandleTopAsync(long chatId, ChatType chatType, int? requestedLimit, CancellationToken ct)
     {
         const int defaultLimit = 30;
         const int maxLimit = 100;
@@ -844,7 +806,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         
         if (rankings is null)
         {
-            await _botClient.SendMessage(chatId, "Не удалось загрузить рейтинг кланов.", cancellationToken: ct);
+            await SendBotMessageAsync(chatId, chatType, "Не удалось загрузить рейтинг кланов.", cancellationToken: ct);
             return;
         }
 
@@ -852,7 +814,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         
         if (top.Count == 0)
         {
-            await _botClient.SendMessage(chatId, "Рейтинг кланов пуст.", cancellationToken: ct);
+            await SendBotMessageAsync(chatId, chatType, "Рейтинг кланов пуст.", cancellationToken: ct);
             return;
         }
 
@@ -865,16 +827,16 @@ public sealed class BotUpdateHandler : IUpdateHandler
             return $"{x.Rank}. {x.Name} {x.Tag} 🏆{x.ClanScore} {trend}{signed}";
         }));
         
-        await _botClient.SendMessage(chatId, text, cancellationToken: ct);
+        await SendBotMessageAsync(chatId, chatType, text, cancellationToken: ct);
     }
 
-    private async Task HandleInTopAsync(long chatId, CancellationToken ct)
+    private async Task HandleInTopAsync(long chatId, ChatType chatType, CancellationToken ct)
     {
         var clan = await _api.GetClanAsync(_config.ClanTag, ct);
         
         if (clan is null)
         {
-            await _botClient.SendMessage(chatId, "Не удалось загрузить данные клана.", cancellationToken: ct);
+            await SendBotMessageAsync(chatId, chatType, "Не удалось загрузить данные клана.", cancellationToken: ct);
             return;
         }
 
@@ -902,7 +864,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine($"Топ по кубкам в регионе {regionName} - {(clanRank?.Rank.ToString() ?? "н/д")}");
         sb.AppendLine($"Топ по КВ в регионе {regionName} - {(warRank?.Rank.ToString() ?? "н/д")}");
 
-        await _botClient.SendMessage(chatId, sb.ToString().TrimEnd(), cancellationToken: ct);
+        await SendBotMessageAsync(chatId, chatType, sb.ToString().TrimEnd(), cancellationToken: ct);
     }
 
     private static async Task<RankedClanDto?> FindClanInRankingAsync(
@@ -992,10 +954,18 @@ public sealed class BotUpdateHandler : IUpdateHandler
         }
     }
 
-    private Task DenyAsync(long chatId, CancellationToken ct) =>
-        _botClient.SendMessage(chatId, "⛔ Эта команда доступна только руководителям.", cancellationToken: ct);
+    private Task DenyAsync(long chatId, ChatType chatType, CancellationToken ct) =>
+        SendBotMessageAsync(chatId, chatType, "⛔ Эта команда доступна только руководителям.", cancellationToken: ct);
 
-    private async Task HandleLeadersAsync(long chatId, LeaderService leaderService, CancellationToken ct)
+    private async Task SendBotMessageAsync(long chatId, ChatType chatType, string text, ParseMode? parseMode = null, CancellationToken cancellationToken = default)
+    {
+        var sent = await _botClient.SendMessage(chatId, text, parseMode: parseMode, cancellationToken: cancellationToken);
+
+        if (chatType != ChatType.Private)
+            _autoDelete.ScheduleDelete(chatId, sent.MessageId, TimeSpan.FromHours(1));
+    }
+
+    private async Task HandleLeadersAsync(long chatId, ChatType chatType, LeaderService leaderService, CancellationToken ct)
     {
         var leaders = await leaderService.GetLeadersAsync(ct);
 
@@ -1006,7 +976,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         if (leaders.UserIds.Length == 0 && leaders.Usernames.Length == 0)
         {
             sb.AppendLine("— список пуст —");
-            await _botClient.SendMessage(chatId, sb.ToString().TrimEnd(), cancellationToken: ct);
+            await SendBotMessageAsync(chatId, chatType, sb.ToString().TrimEnd(), cancellationToken: ct);
             return;
         }
 
@@ -1025,7 +995,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
                 sb.AppendLine($"- {id}");
         }
 
-        await _botClient.SendMessage(chatId, sb.ToString().TrimEnd(), cancellationToken: ct);
+        await SendBotMessageAsync(chatId, chatType, sb.ToString().TrimEnd(), cancellationToken: ct);
     }
 
     private async Task HandleAddLeaderAsync(Message message, ParsedCommand command, LeaderService leaderService, CancellationToken ct)
@@ -1039,7 +1009,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
         if (targetId is null && string.IsNullOrWhiteSpace(targetUsername))
         {
-            await _botClient.SendMessage(message.Chat.Id, "Используй: ответом на сообщение «Добавить руководителя» или «Добавить руководителя@username».", cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Используй: ответом на сообщение «Добавить руководителя» или «Добавить руководителя@username».", cancellationToken: ct);
             return;
         }
 
@@ -1049,7 +1019,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
             ? $"✅ Добавлен руководитель: {who}\n\nВсего: {current.Usernames.Length} @username, {current.UserIds.Length} ID."
             : $"ℹ️ Уже есть в списке руководителей: {who}";
 
-        await _botClient.SendMessage(message.Chat.Id, text, cancellationToken: ct);
+        await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, text, cancellationToken: ct);
     }
 
     private async Task HandleRemoveLeaderAsync(Message message, ParsedCommand command, LeaderService leaderService, CancellationToken ct)
@@ -1063,7 +1033,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
         if (targetId is null && string.IsNullOrWhiteSpace(targetUsername))
         {
-            await _botClient.SendMessage(message.Chat.Id, "Используй: ответом на сообщение «Удалить руководителя» или «Удалить руководителя@username».", cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Используй: ответом на сообщение «Удалить руководителя» или «Удалить руководителя@username».", cancellationToken: ct);
             return;
         }
 
@@ -1073,6 +1043,6 @@ public sealed class BotUpdateHandler : IUpdateHandler
             ? $"✅ Удалён руководитель: {who}\n\nОсталось: {current.Usernames.Length} @username, {current.UserIds.Length} ID."
             : $"ℹ️ Не найден в списке руководителей: {who}";
 
-        await _botClient.SendMessage(message.Chat.Id, text, cancellationToken: ct);
+        await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, text, cancellationToken: ct);
     }
 }

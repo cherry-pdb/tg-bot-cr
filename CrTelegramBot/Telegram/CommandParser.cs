@@ -42,17 +42,20 @@ public sealed class CommandParser
         if (text.StartsWith("В ЧС#", StringComparison.OrdinalIgnoreCase))
             return new ParsedCommand(ParsedCommandKind.Blacklist, text[5..].Trim());
 
+        if (text.StartsWith("В ЧС", StringComparison.OrdinalIgnoreCase))
+            return ParseOptionalUsername(text, "В ЧС", ParsedCommandKind.Blacklist);
+
+        if (text.StartsWith("Из ЧС#", StringComparison.OrdinalIgnoreCase))
+            return new ParsedCommand(ParsedCommandKind.RemoveBlacklist, text[6..].Trim());
+
+        if (text.StartsWith("Из ЧС", StringComparison.OrdinalIgnoreCase))
+            return ParseOptionalUsername(text, "Из ЧС", ParsedCommandKind.RemoveBlacklist);
+
         if (text.Equals("Профиль", StringComparison.OrdinalIgnoreCase))
             return new ParsedCommand(ParsedCommandKind.Profile);
 
         if (text.StartsWith("Профиль#", StringComparison.OrdinalIgnoreCase))
             return new ParsedCommand(ParsedCommandKind.Profile, text[8..].Trim());
-
-        if (text.Equals("Сундуки", StringComparison.OrdinalIgnoreCase))
-            return new ParsedCommand(ParsedCommandKind.Chests);
-
-        if (text.StartsWith("Сундуки#", StringComparison.OrdinalIgnoreCase))
-            return new ParsedCommand(ParsedCommandKind.Chests, text[8..].Trim());
 
         if (text.StartsWith("Топ", StringComparison.OrdinalIgnoreCase))
         {

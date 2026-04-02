@@ -11,6 +11,7 @@ public enum ParsedCommandKind
     WarStatus,
     RemindWar,
     Blacklist,
+    RemoveBlacklist,
     Profile,
     Chests,
     Top,

@@ -78,9 +78,10 @@ public sealed class ClanMembershipMonitorWorker : BackgroundService
         foreach (var tag in left)
         {
             var player = previousMap[tag];
+            var warn = blacklist.ContainsKey(tag) ? "\n⛔ ВНИМАНИЕ: игрок в ЧС." : string.Empty;
             
             foreach (var leaderId in leaderIds)
-                await notifications.SendPrivateMessageSafeAsync(leaderId, $"🔴 Клан покинул {player.PlayerName} {tag}", ct);
+                await notifications.SendPrivateMessageSafeAsync(leaderId, $"🔴 Клан покинул {player.PlayerName} {tag}{warn}", ct);
         }
 
         db.ClanSnapshotMembers.RemoveRange(previous);

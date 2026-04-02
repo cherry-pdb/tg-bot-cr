@@ -13,16 +13,19 @@ public sealed class WarReminderWorker : BackgroundService
     private readonly ITelegramBotClient _botClient;
     private readonly BotConfig _config;
     private readonly ILogger<WarReminderWorker> _logger;
+    private readonly AutoDeleteService _autoDelete;
 
     public WarReminderWorker(
         IServiceScopeFactory scopeFactory,
         ITelegramBotClient botClient,
         BotConfig config,
+        AutoDeleteService autoDelete,
         ILogger<WarReminderWorker> logger)
     {
         _scopeFactory = scopeFactory;
         _botClient = botClient;
         _config = config;
+        _autoDelete = autoDelete;
         _logger = logger;
     }
 
@@ -62,7 +65,8 @@ public sealed class WarReminderWorker : BackgroundService
             
             if (!await db.BotSettings.AnyAsync(x => x.Key == marker, ct))
             {
-                await _botClient.SendMessage(_config.MainChatId, "⚔️ Началось КВ. Не забудьте отыграть колоды.", cancellationToken: ct);
+                var sent = await _botClient.SendMessage(_config.MainChatId, "⚔️ Началось КВ. Не забудьте отыграть колоды.", cancellationToken: ct);
+                _autoDelete.ScheduleDelete(_config.MainChatId, sent.MessageId, TimeSpan.FromHours(1));
                 db.BotSettings.Add(new BotSetting { Key = marker, Value = "1" });
                 await db.SaveChangesAsync(ct);
             }
@@ -118,7 +122,8 @@ public sealed class WarReminderWorker : BackgroundService
                 $"Кто ещё не доиграл 4 колоды (сегодня):\n" +
                 string.Join(" ", mentions);
 
-            await _botClient.SendMessage(_config.MainChatId, text, cancellationToken: ct);
+            var sent = await _botClient.SendMessage(_config.MainChatId, text, cancellationToken: ct);
+            _autoDelete.ScheduleDelete(_config.MainChatId, sent.MessageId, TimeSpan.FromHours(1));
             db.BotSettings.Add(new BotSetting { Key = marker, Value = "1" });
             await db.SaveChangesAsync(ct);
         }
