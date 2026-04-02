@@ -959,7 +959,9 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
     private async Task SendBotMessageAsync(long chatId, ChatType chatType, string text, ParseMode? parseMode = null, CancellationToken cancellationToken = default)
     {
-        var sent = await _botClient.SendMessage(chatId, text, parseMode: parseMode, cancellationToken: cancellationToken);
+        var sent = parseMode is { } mode
+            ? await _botClient.SendMessage(chatId, text, parseMode: mode, cancellationToken: cancellationToken)
+            : await _botClient.SendMessage(chatId, text, cancellationToken: cancellationToken);
 
         if (chatType != ChatType.Private)
             _autoDelete.ScheduleDelete(chatId, sent.MessageId, TimeSpan.FromHours(1));
