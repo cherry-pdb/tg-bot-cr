@@ -17,7 +17,7 @@ public sealed class BotDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<UserLink>().HasIndex(x => x.PlayerTag).IsUnique();
-        modelBuilder.Entity<UserLink>().HasIndex(x => x.TelegramUserId).IsUnique();
+        modelBuilder.Entity<UserLink>().HasIndex(x => x.TelegramUserId);
         modelBuilder.Entity<LeaderNotificationSetting>().HasIndex(x => x.TelegramUserId).IsUnique();
         modelBuilder.Entity<BlacklistedPlayer>().HasIndex(x => x.PlayerTag).IsUnique();
         modelBuilder.Entity<ClanSnapshotMember>().HasIndex(x => x.PlayerTag).IsUnique();

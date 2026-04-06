@@ -172,7 +172,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
                         await SendBotMessageAsync(
                             message.Chat.Id,
                             message.Chat.Type,
-                            "Не удалось определить тег: укажи В ЧС#ТЕГ, ответь на сообщение пользователя или В ЧС@username (нужна привязка Подключить).",
+                            "Не удалось определить тег: укажи В ЧС#ТЕГ, ответь на сообщение пользователя или В ЧС@username. Если у человека несколько привязок — только В ЧС#ТЕГ.",
                             cancellationToken: ct);
                         break;
                     }
@@ -191,7 +191,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
                         await SendBotMessageAsync(
                             message.Chat.Id,
                             message.Chat.Type,
-                            "Не удалось определить тег: укажи Из ЧС#ТЕГ, ответь на сообщение пользователя или Из ЧС@username (нужна привязка Подключить).",
+                            "Не удалось определить тег: укажи Из ЧС#ТЕГ, ответь на сообщение пользователя или Из ЧС@username. Если у человека несколько привязок — только Из ЧС#ТЕГ.",
                             cancellationToken: ct);
                         break;
                     }
@@ -257,24 +257,24 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("📌 Доступные команды (подробно)");
         sb.AppendLine();
         sb.AppendLine("Для всех:");
-        sb.AppendLine("• <b><u>Профиль</u></b> — показать профиль подключённого игрока (через Подключить/Привязать).");
-        sb.AppendLine("• <b><u>Профиль#ТЕГ</u></b> — показать профиль игрока по тегу без привязки.");
+        sb.AppendLine("• <b><u>Профиль</u></b> — показать профиль(и) всех привязанных аккаунтов (до 5); если нужен один — <b>Профиль#ТЕГ</b>.");
+        sb.AppendLine("• <b><u>Профиль#ТЕГ</u></b> — показать профиль игрока по тегу (можно без своей привязки).");
         sb.AppendLine("• <b><u>Топ / ТопN</u></b> — показать топ N кланов по кубкам в регионе (по умолчанию топ30).");
         sb.AppendLine("• <b><u>Втопе</u></b> — показать место клана в топе по кубкам и по КВ.");
         sb.AppendLine("• <b><u>Команды</u></b> — краткий список команд и их описание.");
         sb.AppendLine();
         sb.AppendLine("Только для руководителей:");
-        sb.AppendLine("• <b><u>Подключить#ТЕГ (ответом на сообщение)</u></b> — привязать Telegram-пользователя к тегу игрока.");
-        sb.AppendLine("• <b><u>Подключить#ТЕГ@username</u></b> — привязать игрока по тегу к пользователю @username.");
-        sb.AppendLine("• <b><u>Отключить#ТЕГ</u></b> — снять привязку по тегу игрока.");
-        sb.AppendLine("• <b><u>Отключить#ТЕГ@username</u></b> — снять привязку по нику Telegram.");
+        sb.AppendLine("• <b><u>Подключить#ТЕГ (ответом на сообщение)</u></b> — привязать ещё один аккаунт Clash Royale к этому Telegram (у одного человека может быть несколько тегов).");
+        sb.AppendLine("• <b><u>Подключить#ТЕГ@username</u></b> — то же по @username.");
+        sb.AppendLine("• <b><u>Отключить#ТЕГ</u></b> — снять привязку с конкретного тега.");
+        sb.AppendLine("• <b><u>Отключить#ТЕГ@username</u></b> — снять привязку по нику (если у пользователя один тег; иначе укажи тег).");
         sb.AppendLine("• <b><u>Включить уведомления</u></b> — включить личные уведомления о входе/выходе игроков и напоминаниях.");
         sb.AppendLine("• <b><u>Отключить уведомления</u></b> — отключить личные уведомления для руководителя.");
         sb.AppendLine("• <b><u>Участники</u></b> — список участников клана с отметкой, кто привязан к Telegram.");
         sb.AppendLine("• <b><u>Что с КВ</u></b> — текущий статус КВ и кланы в рейсе.");
         sb.AppendLine("• <b><u>Напомни о КВ</u></b> — включить автоматические напоминания о КВ в основной чат.");
-        sb.AppendLine("• <b><u>В ЧС#ТЕГ</u></b> — добавить в чёрный список по тегу; также <b>В ЧС</b> ответом на сообщение или <b>В ЧС@username</b>, если есть привязка.");
-        sb.AppendLine("• <b><u>Из ЧС#ТЕГ</u></b> — убрать из чёрного списка по тегу; также <b>Из ЧС</b> ответом или <b>Из ЧС@username</b>, если есть привязка.");
+        sb.AppendLine("• <b><u>В ЧС#ТЕГ</u></b> — добавить в чёрный список по тегу; также <b>В ЧС</b> ответом или <b>В ЧС@username</b>, если ровно одна привязка.");
+        sb.AppendLine("• <b><u>Из ЧС#ТЕГ</u></b> — убрать из чёрного списка; при нескольких привязках — только с тегом.");
         sb.AppendLine("• <b><u>Добавить руководителя</u></b> — добавить руководителя (ответом на сообщение) или <b>Добавить руководителя@username</b>.");
         sb.AppendLine("• <b><u>Удалить руководителя</u></b> — удалить руководителя (ответом на сообщение) или <b>Удалить руководителя@username</b>.");
         sb.AppendLine("• <b><u>Руководители</u></b> — показать текущий список руководителей (из настроек бота).");
@@ -350,13 +350,49 @@ public sealed class BotUpdateHandler : IUpdateHandler
             var seen = seenCandidates
                 .OrderByDescending(x => x.LastSeenAt)
                 .FirstOrDefault();
-            
+
             if (seen is not null)
-                link = await db.UserLinks.FirstOrDefaultAsync(x => x.TelegramUserId == seen.TelegramUserId, ct);
+            {
+                var links = await db.UserLinks.Where(x => x.TelegramUserId == seen.TelegramUserId).ToListAsync(ct);
+                link = links.Count switch
+                {
+                    0 => null,
+                    1 => links[0],
+                    _ => null
+                };
+
+                if (link is null && links.Count > 1)
+                {
+                    await SendBotMessageAsync(
+                        message.Chat.Id,
+                        message.Chat.Type,
+                        $"Несколько привязок у @{username}: укажи Отключить#ТЕГ. Теги: {string.Join(", ", links.Select(x => x.PlayerTag))}",
+                        cancellationToken: ct);
+                    return;
+                }
+            }
         }
 
-        if (link is null && message.ReplyToMessage?.From is not null)
-            link = await db.UserLinks.FirstOrDefaultAsync(x => x.TelegramUserId == message.ReplyToMessage.From.Id, ct);
+        if (link is null && message.ReplyToMessage?.From is { } replyFrom)
+        {
+            var links = await db.UserLinks.Where(x => x.TelegramUserId == replyFrom.Id).ToListAsync(ct);
+            link = links.Count switch
+            {
+                0 => null,
+                1 => links[0],
+                _ => null
+            };
+
+            if (link is null && links.Count > 1)
+            {
+                await SendBotMessageAsync(
+                    message.Chat.Id,
+                    message.Chat.Type,
+                    $"Несколько привязок: укажи Отключить#ТЕГ. Теги: {string.Join(", ", links.Select(x => x.PlayerTag))}",
+                    cancellationToken: ct);
+                return;
+            }
+        }
 
         if (link is null)
         {
@@ -516,7 +552,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         await SendTextChunksAsync(chatId, chatType, sb.ToString(), parseMode: ParseMode.Html, ct);
     }
 
-    private async Task SendTextChunksAsync(long chatId, ChatType chatType, string text, ParseMode parseMode, CancellationToken ct)
+    private async Task SendTextChunksAsync(long chatId, ChatType chatType, string text, ParseMode? parseMode = null, CancellationToken ct = default)
     {
         const int maxLen = 4096;
         if (text.Length <= maxLen)
@@ -576,14 +612,20 @@ public sealed class BotUpdateHandler : IUpdateHandler
             if (seen is null)
                 return null;
 
-            var link = await db.UserLinks.AsNoTracking().FirstOrDefaultAsync(x => x.TelegramUserId == seen.TelegramUserId, ct);
-            return link is null ? null : ClashRoyaleApiClient.NormalizeTag(link.PlayerTag);
+            var links = await db.UserLinks.AsNoTracking().Where(x => x.TelegramUserId == seen.TelegramUserId).ToListAsync(ct);
+            if (links.Count != 1)
+                return null;
+
+            return ClashRoyaleApiClient.NormalizeTag(links[0].PlayerTag);
         }
 
         if (message.ReplyToMessage?.From is { } from)
         {
-            var link = await db.UserLinks.AsNoTracking().FirstOrDefaultAsync(x => x.TelegramUserId == from.Id, ct);
-            return link is null ? null : ClashRoyaleApiClient.NormalizeTag(link.PlayerTag);
+            var links = await db.UserLinks.AsNoTracking().Where(x => x.TelegramUserId == from.Id).ToListAsync(ct);
+            if (links.Count != 1)
+                return null;
+
+            return ClashRoyaleApiClient.NormalizeTag(links[0].PlayerTag);
         }
 
         return null;
@@ -591,36 +633,92 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
     private async Task HandleProfileAsync(Message message, ParsedCommand command, BotDbContext db, CancellationToken ct)
     {
-        var tag = command.PlayerTag;
-        
-        if (tag is null && message.From is not null)
-            tag = (await db.UserLinks.AsNoTracking().FirstOrDefaultAsync(x => x.TelegramUserId == message.From.Id, ct))?.PlayerTag;
+        List<string> tags;
 
-        if (tag is null)
+        if (!string.IsNullOrWhiteSpace(command.PlayerTag))
+        {
+            tags = new List<string> { ClashRoyaleApiClient.NormalizeTag(command.PlayerTag!) };
+        }
+        else if (message.From is not null)
+        {
+            tags = await db.UserLinks.AsNoTracking()
+                .Where(x => x.TelegramUserId == message.From.Id)
+                .OrderBy(x => x.Id)
+                .Select(x => x.PlayerTag)
+                .ToListAsync(ct);
+        }
+        else
         {
             await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Профиль не подключён. Используй Профиль#ТЕГ.", cancellationToken: ct);
             return;
         }
 
-        var player = await _api.GetPlayerAsync(tag, ct);
-        
-        if (player is null)
+        if (tags.Count == 0)
         {
-            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Не удалось загрузить профиль.", cancellationToken: ct);
+            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Профиль не подключён. Используй Профиль#ТЕГ.", cancellationToken: ct);
             return;
         }
 
+        const int maxAccounts = 5;
+
+        if (tags.Count > maxAccounts)
+        {
+            await SendBotMessageAsync(
+                message.Chat.Id,
+                message.Chat.Type,
+                $"Слишком много привязанных аккаунтов ({tags.Count}). Покажи профиль по одному: Профиль#ТЕГ.",
+                cancellationToken: ct);
+            return;
+        }
+
+        var sb = new StringBuilder();
+
+        for (var i = 0; i < tags.Count; i++)
+        {
+            var tag = tags[i];
+            var player = await _api.GetPlayerAsync(tag, ct);
+
+            if (player is null)
+            {
+                sb.AppendLine($"Не удалось загрузить профиль для {tag}.");
+
+                if (i < tags.Count - 1)
+                    sb.AppendLine();
+
+                continue;
+            }
+
+            if (tags.Count > 1)
+            {
+                if (i > 0)
+                    sb.AppendLine().AppendLine("──────────").AppendLine();
+
+                sb.AppendLine($"Аккаунт {i + 1}/{tags.Count}");
+                sb.AppendLine();
+            }
+
+            sb.Append(await FormatPlayerProfileSectionAsync(player, ct));
+
+            if (i < tags.Count - 1)
+                sb.AppendLine();
+        }
+
+        await SendTextChunksAsync(message.Chat.Id, message.Chat.Type, sb.ToString().TrimEnd(), parseMode: null, ct);
+    }
+
+    private async Task<string> FormatPlayerProfileSectionAsync(PlayerDto player, CancellationToken ct)
+    {
         string? clanRoleRu = null;
-        
+
         if (player.Clan?.Tag is { Length: > 0 } clanTag)
         {
             var clan = await _api.GetClanAsync(clanTag, ct);
             var member = clan?.MemberList.FirstOrDefault(x => string.Equals(x.Tag, player.Tag, StringComparison.OrdinalIgnoreCase));
-            
+
             if (member is not null)
                 clanRoleRu = ToRuRole(member.Role);
         }
-        
+
         clanRoleRu ??= !string.IsNullOrWhiteSpace(player.Role) ? ToRuRole(player.Role) : null;
         var wins = player.Wins;
         var losses = player.Losses;
@@ -631,27 +729,27 @@ public sealed class BotUpdateHandler : IUpdateHandler
         var emoteCount = GetBadgeProgress("EmoteCollection");
         var warWinsFromBadge = GetBadgeProgress("ClanWarWins");
         var accountDays = GetBadgeProgress("YearsPlayed");
-        
+
         var sb = new StringBuilder();
         sb.AppendLine($"Информация об аккаунте {player.Name} {player.Tag}");
         sb.AppendLine();
 
         var clanName = player.Clan?.Name?.Name ?? player.Clan?.Name?.RawName;
-        
+
         if (player.Clan is not null)
         {
             sb.AppendLine($"Клан: {clanName ?? "—"} {player.Clan.Tag}");
-            
+
             if (!string.IsNullOrWhiteSpace(clanRoleRu))
                 sb.AppendLine($"Роль: {clanRoleRu}");
-            
+
             sb.AppendLine();
         }
 
         sb.AppendLine($"Трофеи: {player.Trophies}");
         sb.AppendLine($"Максимум трофеев: {player.BestTrophies}");
         sb.AppendLine($"Уровень короля: {player.ExpLevel}");
-        
+
         if (accountDays > 0)
         {
             var ageText = FormatAccountAge(accountDays.Value);
@@ -661,14 +759,14 @@ public sealed class BotUpdateHandler : IUpdateHandler
         {
             sb.AppendLine("Возраст аккаунта: н/д");
         }
-        
+
         sb.AppendLine();
         sb.AppendLine($"Победы: {wins} ({winRate:0.00}%)");
         sb.AppendLine($"Поражения: {losses}");
         sb.AppendLine($"Побед на 3 короны: {player.ThreeCrownWins}");
         sb.AppendLine($"Всего игр: {total}");
         sb.AppendLine();
-        
+
         var warWinsTotal = warWinsFromBadge ?? player.WarDayWins;
         sb.AppendLine($"Побед в клановых войнах: {warWinsTotal}");
         sb.AppendLine($"Собрано баннеров: {bannerCount?.ToString() ?? "н/д"}");
@@ -678,12 +776,12 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine();
 
         var cards = player.Cards;
-        
+
         if (cards.Count > 0)
         {
             sb.AppendLine($"Открыто карт: {cards.Count}");
             sb.AppendLine("Количество прокачанных карт:");
-            
+
             foreach (var level in cards.Select(GetDisplayCardLevel).Distinct().OrderByDescending(x => x))
                 AppendCardLevelBreakdown(sb, cards, level);
         }
@@ -697,7 +795,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         if (player.Clan?.Tag is { Length: > 0 } warClanTag)
         {
             var warLog = await _api.GetClanWarLogAsync(warClanTag, 10, ct);
-            
+
             if (warLog?.Items is { Count: > 0 })
             {
                 sb.AppendLine();
@@ -712,7 +810,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
                             ClashRoyaleApiClient.NormalizeTag(StandingTag(x)),
                             warClanTagNorm,
                             StringComparison.OrdinalIgnoreCase));
-                    
+
                     if (standing is null)
                         continue;
 
@@ -725,8 +823,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
             }
         }
 
-        await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, sb.ToString().TrimEnd(), cancellationToken: ct);
-        return;
+        return sb.ToString().TrimEnd();
 
         int? GetBadgeProgress(string name) =>
             badges.FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase))?.Progress;
@@ -926,11 +1023,11 @@ public sealed class BotUpdateHandler : IUpdateHandler
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-            var link = await db.UserLinks.FirstOrDefaultAsync(x => x.TelegramUserId == update.NewChatMember.User.Id, ct);
-            
-            if (link is not null)
+            var links = await db.UserLinks.Where(x => x.TelegramUserId == update.NewChatMember.User.Id).ToListAsync(ct);
+
+            if (links.Count > 0)
             {
-                db.UserLinks.Remove(link);
+                db.UserLinks.RemoveRange(links);
                 await db.SaveChangesAsync(ct);
             }
         }
