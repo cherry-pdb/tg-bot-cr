@@ -228,7 +228,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("Краткий список. Нажми «Подробнее» ниже, чтобы увидеть описание каждой команды.");
         sb.AppendLine();
         sb.AppendLine("Для всех:");
-        sb.AppendLine("- Профиль / Профиль#ТЕГ");
+        sb.AppendLine("- Профиль (ответом — чужой) / Профиль#ТЕГ");
         sb.AppendLine("- Топ / Топ50");
         sb.AppendLine("- Втопе");
         sb.AppendLine("- Команды");
@@ -257,7 +257,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("📌 Доступные команды (подробно)");
         sb.AppendLine();
         sb.AppendLine("Для всех:");
-        sb.AppendLine("• <b><u>Профиль</u></b> — показать профиль(и) всех привязанных аккаунтов (до 5); если нужен один — <b>Профиль#ТЕГ</b>.");
+        sb.AppendLine("• <b><u>Профиль</u></b> — свой профиль по привязкам; ответом на сообщение — профиль того, кому ответили (до 5 аккаунтов); один аккаунт — <b>Профиль#ТЕГ</b>.");
         sb.AppendLine("• <b><u>Профиль#ТЕГ</u></b> — показать профиль игрока по тегу (можно без своей привязки).");
         sb.AppendLine("• <b><u>Топ / ТопN</u></b> — показать топ N кланов по кубкам в регионе (по умолчанию топ30).");
         sb.AppendLine("• <b><u>Втопе</u></b> — показать место клана в топе по кубкам и по КВ.");
@@ -639,18 +639,26 @@ public sealed class BotUpdateHandler : IUpdateHandler
         {
             tags = new List<string> { ClashRoyaleApiClient.NormalizeTag(command.PlayerTag!) };
         }
-        else if (message.From is not null)
+        else
         {
+            long? subjectId = null;
+
+            if (message.ReplyToMessage?.From is { IsBot: false } replyFrom)
+                subjectId = replyFrom.Id;
+            else if (message.From is not null)
+                subjectId = message.From.Id;
+
+            if (subjectId is null)
+            {
+                await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Профиль не подключён. Используй Профиль#ТЕГ.", cancellationToken: ct);
+                return;
+            }
+
             tags = await db.UserLinks.AsNoTracking()
-                .Where(x => x.TelegramUserId == message.From.Id)
+                .Where(x => x.TelegramUserId == subjectId.Value)
                 .OrderBy(x => x.Id)
                 .Select(x => x.PlayerTag)
                 .ToListAsync(ct);
-        }
-        else
-        {
-            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Профиль не подключён. Используй Профиль#ТЕГ.", cancellationToken: ct);
-            return;
         }
 
         if (tags.Count == 0)
