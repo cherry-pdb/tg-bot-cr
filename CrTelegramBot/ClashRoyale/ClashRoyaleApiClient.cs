@@ -58,6 +58,12 @@ public sealed class ClashRoyaleApiClient
         return GetAsync<ClanRankingDto>(url, ct);
     }
 
+    /// <summary>
+    /// Перед десериализацией riverracelog: API иногда отдаёт кавычки внутри строк без экранирования (ломает JSON).
+    /// </summary>
+    private static string SanitizeClanWarLogJson(string json) =>
+        json.Replace("\")", "\\\")");
+
     private async Task<T?> GetAsync<T>(string url, CancellationToken ct)
     {
         using var response = await _httpClient.GetAsync(url, ct);
@@ -69,6 +75,9 @@ public sealed class ClashRoyaleApiClient
             
             return default;
         }
+
+        if (typeof(T) == typeof(ClanWarLogDto))
+            content = SanitizeClanWarLogJson(content);
 
         try
         {
