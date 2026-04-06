@@ -8,6 +8,7 @@ public enum ParsedCommandKind
     DisableNotifications,
     Commands,
     Participants,
+    ParticipantsAll,
     WarStatus,
     RemindWar,
     Blacklist,

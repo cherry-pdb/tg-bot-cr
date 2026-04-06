@@ -149,7 +149,12 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
             case ParsedCommandKind.Participants:
                 if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
-                await HandleParticipantsAsync(message.Chat.Id, message.Chat.Type, clanService, db, ct);
+                await HandleParticipantsAsync(message.Chat.Id, message.Chat.Type, clanService, db, mentionEveryone: false, ct);
+                break;
+
+            case ParsedCommandKind.ParticipantsAll:
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
+                await HandleParticipantsAsync(message.Chat.Id, message.Chat.Type, clanService, db, mentionEveryone: true, ct);
                 break;
 
             case ParsedCommandKind.WarStatus:
@@ -240,7 +245,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("- Отключить#ТЕГ@username");
         sb.AppendLine("- Включить уведомления");
         sb.AppendLine("- Отключить уведомления");
-        sb.AppendLine("- Участники");
+        sb.AppendLine("- Участники / all / все");
         sb.AppendLine("- Что с КВ? / Что с КВ");
         sb.AppendLine("- Напомни о КВ");
         sb.AppendLine("- В ЧС#ТЕГ");
@@ -270,7 +275,8 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("• <b><u>Отключить#ТЕГ@username</u></b> — снять привязку по нику (если у пользователя один тег; иначе укажи тег).");
         sb.AppendLine("• <b><u>Включить уведомления</u></b> — включить личные уведомления о входе/выходе игроков и напоминаниях.");
         sb.AppendLine("• <b><u>Отключить уведомления</u></b> — отключить личные уведомления для руководителя.");
-        sb.AppendLine("• <b><u>Участники</u></b> — список участников клана с отметкой, кто привязан к Telegram.");
+        sb.AppendLine("• <b><u>Участники</u></b> — список участников клана; привязанные — ссылка на t.me без упоминаний.");
+        sb.AppendLine("• <b><u>all / все</u></b> — то же, но с упоминаниями привязанных.");
         sb.AppendLine("• <b><u>Что с КВ</u></b> — текущий статус КВ и кланы в рейсе.");
         sb.AppendLine("• <b><u>Напомни о КВ</u></b> — включить автоматические напоминания о КВ в основной чат.");
         sb.AppendLine("• <b><u>В ЧС#ТЕГ</u></b> — добавить в чёрный список по тегу; также <b>В ЧС</b> ответом или <b>В ЧС@username</b>, если ровно одна привязка.");
@@ -435,7 +441,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task HandleParticipantsAsync(long chatId, ChatType chatType, ClanService clanService, BotDbContext db, CancellationToken ct)
+    private async Task HandleParticipantsAsync(long chatId, ChatType chatType, ClanService clanService, BotDbContext db, bool mentionEveryone, CancellationToken ct)
     {
         var clan = await clanService.GetClanAsync(ct);
 
@@ -448,7 +454,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         var links = await db.UserLinks.AsNoTracking().ToListAsync(ct);
         var linkedByTag = links.ToDictionary(x => x.PlayerTag, StringComparer.OrdinalIgnoreCase);
 
-        static string? GetTelegramLink(UserLink? link)
+        static string? GetTelegramMentionLink(UserLink? link)
         {
             if (link is null)
                 return null;
@@ -457,16 +463,29 @@ public sealed class BotUpdateHandler : IUpdateHandler
                 return $"tg://user?id={link.TelegramUserId}";
 
             var username = link.TelegramUsername.Trim();
-            
+
             if (string.IsNullOrWhiteSpace(username))
                 return null;
 
             username = username.TrimStart('@');
-            
+
             if (string.IsNullOrWhiteSpace(username))
                 return null;
 
             return $"tg://resolve?domain={username}";
+        }
+
+        static string? GetTelegramProfileUrlNoMention(UserLink? link)
+        {
+            if (link is null)
+                return null;
+
+            var username = link.TelegramUsername.Trim().TrimStart('@');
+
+            if (string.IsNullOrWhiteSpace(username))
+                return null;
+
+            return $"https://t.me/{Uri.EscapeDataString(username)}";
         }
 
         var lines = clan.MemberList
@@ -476,10 +495,18 @@ public sealed class BotUpdateHandler : IUpdateHandler
                 var isLinked = linked is not null;
                 var nameEsc = System.Net.WebUtility.HtmlEncode(member.Name);
                 var tagEsc = System.Net.WebUtility.HtmlEncode(member.Tag);
-                var telegramLink = isLinked ? GetTelegramLink(linked) : null;
+                string? href = null;
+
+                if (isLinked)
+                {
+                    href = mentionEveryone
+                        ? GetTelegramMentionLink(linked)
+                        : GetTelegramProfileUrlNoMention(linked);
+                }
+
                 var text = isLinked
-                    ? telegramLink is not null
-                        ? $"✅ - <a href=\"{telegramLink}\">{nameEsc}</a> {tagEsc}"
+                    ? href is not null
+                        ? $"✅ - <a href=\"{href}\">{nameEsc}</a> {tagEsc}"
                         : $"✅ - {nameEsc} {tagEsc}"
                     : $"❌ - {nameEsc} {tagEsc}";
 
@@ -490,10 +517,14 @@ public sealed class BotUpdateHandler : IUpdateHandler
             .Select(x => x.text)
             .ToList();
 
+        var title = mentionEveryone
+            ? "👥 Участники клана (с упоминаниями)"
+            : "👥 Участники клана";
+
         await SendBotMessageAsync(
             chatId,
             chatType,
-            "👥 Участники клана\n\n" + string.Join("\n", lines.Take(50)),
+            title + "\n\n" + string.Join("\n", lines.Take(50)),
             parseMode: ParseMode.Html,
             cancellationToken: ct);
     }

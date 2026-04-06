@@ -30,6 +30,9 @@ public sealed class CommandParser
         if (text.Equals("Команды", StringComparison.OrdinalIgnoreCase) || text.Equals("Команда", StringComparison.OrdinalIgnoreCase))
             return new ParsedCommand(ParsedCommandKind.Commands);
 
+        if (text.Equals("all", StringComparison.OrdinalIgnoreCase) || text.Equals("все", StringComparison.OrdinalIgnoreCase))
+            return new ParsedCommand(ParsedCommandKind.ParticipantsAll);
+
         if (text.Equals("Участники", StringComparison.OrdinalIgnoreCase))
             return new ParsedCommand(ParsedCommandKind.Participants);
 
