@@ -14,7 +14,6 @@ public enum ParsedCommandKind
     Blacklist,
     RemoveBlacklist,
     Profile,
-    Chests,
     Top,
     InTop,
     AddLeader,

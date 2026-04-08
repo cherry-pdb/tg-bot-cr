@@ -47,6 +47,10 @@ ConnectionStrings__DefaultConnection=...
 | `ClanTag` | Тег клана в формате `#XXXX` |
 | `LeaderUsernames` | Telegram `@username` руководителей (без `@`) |
 | `ReminderHourUtc` / `WarEndHourUtc` | Часы UTC для напоминаний о КВ |
+| `WarEndDaySummaryMinutesBeforeEnd` | (Legacy) Сводка по КВ за N минут до `WarEndHourUtc` (UTC). `0` — отключить |
+| `WarEndDaySummaryTimeZoneId` | Таймзона (Windows ID) для расписания сводки по локальному времени. Для МСК обычно `Russian Standard Time` |
+| `WarEndDaySummaryLocalTime` | Локальное время `HH:mm` для авто-сводки. Если задано — **имеет приоритет** над `WarEndDaySummaryMinutesBeforeEnd` |
+| `WarEndDaySummaryDaysOfWeek` | Дни недели для авто-сводки: `Monday..Sunday` (например `["Friday","Saturday","Sunday","Monday"]`). Пусто — каждый день |
 | `WarNudgesHoursBeforeEnd` | За сколько часов до конца дня КВ слать пинги |
 | `TopLocationId` | ID локации для команд «Топ» / «Втопе» (по умолчанию регион РФ) |
 | `ClanMonitorIntervalSeconds` | Период опроса API для мониторинга состава клана |

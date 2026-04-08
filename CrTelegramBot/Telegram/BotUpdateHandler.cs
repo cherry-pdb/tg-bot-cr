@@ -480,6 +480,9 @@ public sealed class BotUpdateHandler : IUpdateHandler
             if (link is null)
                 return null;
 
+            if (link.TelegramUserId > 0)
+                return $"tg://user?id={link.TelegramUserId}";
+
             var username = link.TelegramUsername.Trim().TrimStart('@');
 
             if (string.IsNullOrWhiteSpace(username))
