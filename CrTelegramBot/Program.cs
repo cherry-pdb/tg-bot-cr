@@ -46,6 +46,11 @@ using (var scope = host.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<BotDbContext>();
     db.Database.EnsureCreated();
+
+    var mainChatRow = db.BotSettings.AsNoTracking().FirstOrDefault(x => x.Key == BotConfig.MainChatIdSettingKey);
+
+    if (mainChatRow is not null && long.TryParse(mainChatRow.Value, out var mainChatId))
+        scope.ServiceProvider.GetRequiredService<BotConfig>().MainChatId = mainChatId;
 }
 
 await host.RunAsync();

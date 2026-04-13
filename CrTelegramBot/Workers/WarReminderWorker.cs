@@ -1,3 +1,5 @@
+using CrTelegramBot.ClashRoyale;
+using CrTelegramBot.ClashRoyale.Models;
 using CrTelegramBot.Configuration;
 using CrTelegramBot.Data;
 using CrTelegramBot.Data.Entities;
@@ -107,7 +109,67 @@ public sealed class WarReminderWorker : BackgroundService
         return days is null || days.Contains(localNow.DayOfWeek);
     }
 
-    private static string ComputeDecksSignature(IReadOnlyCollection<ClashRoyale.Models.RiverRaceParticipantDto> participants)
+    private static HashSet<string>? BuildClanMemberTagSet(ClanDto? clan)
+    {
+        if (clan?.MemberList is not { Count: > 0 })
+            return null;
+
+        return clan.MemberList
+            .Select(m => ClashRoyaleApiClient.NormalizeTag(m.Tag))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static List<RiverRaceParticipantDto> FilterParticipantsInCurrentClan(
+        IReadOnlyCollection<RiverRaceParticipantDto> participants,
+        HashSet<string>? clanMemberTags)
+    {
+        if (clanMemberTags is null)
+            return participants.ToList();
+
+        return participants
+            .Where(p => clanMemberTags.Contains(ClashRoyaleApiClient.NormalizeTag(p.Tag)))
+            .ToList();
+    }
+
+    private async Task<long> GetMainChatIdAsync(BotDbContext db, CancellationToken ct)
+    {
+        var row = await db.BotSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == BotConfig.MainChatIdSettingKey, ct);
+
+        if (row is not null && long.TryParse(row.Value, out var id))
+            return id;
+
+        return _config.MainChatId;
+    }
+
+    private bool ShouldFireWarNudgeThisMinute(DateTime utcNow, int hoursBeforeEnd)
+    {
+        if (string.IsNullOrWhiteSpace(_config.WarEndLocalTime))
+            return false;
+
+        if (!TimeOnly.TryParseExact(_config.WarEndLocalTime.Trim(), "HH:mm", out var endTime))
+            return false;
+
+        TimeZoneInfo tz;
+
+        try
+        {
+            tz = TimeZoneInfo.FindSystemTimeZoneById(BotConfig.WarEndDaySummaryTimeZoneId);
+        }
+        catch
+        {
+            return false;
+        }
+
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), tz);
+        var endLocal = localNow.Date + endTime.ToTimeSpan();
+        var nudgeLocal = endLocal.AddHours(-hoursBeforeEnd);
+
+        return localNow.Hour == nudgeLocal.Hour
+               && localNow.Minute < 15
+               && localNow.Date == nudgeLocal.Date;
+    }
+
+    private static string ComputeDecksSignature(IReadOnlyCollection<RiverRaceParticipantDto> participants)
     {
         var parts = participants
             .Where(p => !string.IsNullOrWhiteSpace(p.Tag))
@@ -139,6 +201,7 @@ public sealed class WarReminderWorker : BackgroundService
         if (enabled?.Value != "1")
             return;
 
+        var mainChatId = await GetMainChatIdAsync(db, ct);
         var utcNow = DateTime.UtcNow;
         
         if (!ShouldRunWarRemindersThisMinute(utcNow))
@@ -153,8 +216,8 @@ public sealed class WarReminderWorker : BackgroundService
             
             if (!await db.BotSettings.AnyAsync(x => x.Key == marker, ct))
             {
-                var sent = await _botClient.SendMessage(_config.MainChatId, "⚔️ Началось КВ. Не забудьте отыграть колоды.", cancellationToken: ct);
-                _autoDelete.ScheduleDelete(_config.MainChatId, sent.MessageId, TimeSpan.FromHours(1));
+                var sent = await _botClient.SendMessage(mainChatId, "⚔️ Началось КВ. Не забудьте отыграть колоды.", cancellationToken: ct);
+                _autoDelete.ScheduleDelete(mainChatId, sent.MessageId, TimeSpan.FromHours(1));
                 db.BotSettings.Add(new BotSetting { Key = marker, Value = "1" });
                 await db.SaveChangesAsync(ct);
             }
@@ -162,13 +225,23 @@ public sealed class WarReminderWorker : BackgroundService
 
         foreach (var hoursBeforeEnd in _config.WarNudgesHoursBeforeEnd.Distinct().OrderByDescending(x => x))
         {
-            var targetHour = _config.WarEndHourUtc - hoursBeforeEnd;
-            
-            if (targetHour is < 0 or > 23)
-                continue;
+            var useLocalWarEnd = !string.IsNullOrWhiteSpace(_config.WarEndLocalTime);
 
-            if (now.Hour != targetHour || now.Minute >= 15)
-                continue;
+            if (useLocalWarEnd)
+            {
+                if (!ShouldFireWarNudgeThisMinute(utcNow, hoursBeforeEnd))
+                    continue;
+            }
+            else
+            {
+                var targetHour = _config.WarEndHourUtc - hoursBeforeEnd;
+            
+                if (targetHour is < 0 or > 23)
+                    continue;
+
+                if (now.Hour != targetHour || now.Minute >= 15)
+                    continue;
+            }
 
             var marker = $"war_nudge_{hoursBeforeEnd}_{dayKey}";
             
@@ -176,12 +249,19 @@ public sealed class WarReminderWorker : BackgroundService
                 continue;
 
             var race = await clanService.GetCurrentRaceAsync(ct);
+            var clan = await clanService.GetClanAsync(ct);
+            var clanTags = BuildClanMemberTagSet(clan);
             var our = race?.Clan;
             
             if (our?.Participants is null || our.Participants.Count == 0)
                 continue;
 
-            var needToPlay = our.Participants
+            var participantsInClan = FilterParticipantsInCurrentClan(our.Participants, clanTags);
+
+            if (participantsInClan.Count == 0)
+                continue;
+
+            var needToPlay = participantsInClan
                 .Where(p => p.DecksUsedToday < 4)
                 .OrderBy(p => p.DecksUsedToday)
                 .ToList();
@@ -210,8 +290,8 @@ public sealed class WarReminderWorker : BackgroundService
                 $"Кто ещё не доиграл 4 колоды (сегодня):\n" +
                 string.Join(" ", mentions);
 
-            var sent = await _botClient.SendMessage(_config.MainChatId, text, cancellationToken: ct);
-            _autoDelete.ScheduleDelete(_config.MainChatId, sent.MessageId, TimeSpan.FromHours(1));
+            var sent = await _botClient.SendMessage(mainChatId, text, cancellationToken: ct);
+            _autoDelete.ScheduleDelete(mainChatId, sent.MessageId, TimeSpan.FromHours(1));
             db.BotSettings.Add(new BotSetting { Key = marker, Value = "1" });
             await db.SaveChangesAsync(ct);
         }
@@ -228,13 +308,19 @@ public sealed class WarReminderWorker : BackgroundService
             if (!await db.BotSettings.AsNoTracking().AnyAsync(x => x.Key == doneKey, ct))
             {
                 var race = await clanService.GetCurrentRaceAsync(ct);
+                var clan = await clanService.GetClanAsync(ct);
+                var clanTags = BuildClanMemberTagSet(clan);
                 var our = race?.Clan;
 
                 if (our?.Participants is not null && our.Participants.Count > 0)
                 {
-                    var curTotal = our.Participants.Sum(p => p.DecksUsedToday);
-                    var curMax = our.Participants.Max(p => p.DecksUsedToday);
-                    var curSig = ComputeDecksSignature(our.Participants);
+                    var participantsInClan = FilterParticipantsInCurrentClan(our.Participants, clanTags);
+
+                    if (participantsInClan.Count > 0)
+                    {
+                    var curTotal = participantsInClan.Sum(p => p.DecksUsedToday);
+                    var curMax = participantsInClan.Max(p => p.DecksUsedToday);
+                    var curSig = ComputeDecksSignature(participantsInClan);
                     var prevSig = await db.BotSettings
                         .AsNoTracking()
                         .Where(x => x.Key == sigKey)
@@ -267,8 +353,8 @@ public sealed class WarReminderWorker : BackgroundService
                             ? "📋 Сводка по КВ: не удалось восстановить снимок до сброса."
                             : prevText;
 
-                        var sent = await _botClient.SendMessage(_config.MainChatId, toSend, cancellationToken: ct);
-                        _autoDelete.ScheduleDelete(_config.MainChatId, sent.MessageId, TimeSpan.FromHours(2));
+                        var sent = await _botClient.SendMessage(mainChatId, toSend, cancellationToken: ct);
+                        _autoDelete.ScheduleDelete(mainChatId, sent.MessageId, TimeSpan.FromHours(2));
                         db.BotSettings.Add(new BotSetting { Key = doneKey, Value = "1" });
                         await db.SaveChangesAsync(ct);
                     }
@@ -278,7 +364,7 @@ public sealed class WarReminderWorker : BackgroundService
                             .Where(x => x.IsEnabled)
                             .ToDictionaryAsync(x => x.PlayerTag, StringComparer.OrdinalIgnoreCase, ct);
 
-                        var lines = our.Participants
+                        var lines = participantsInClan
                             .Select(p =>
                             {
                                 var left = Math.Clamp(4 - p.DecksUsedToday, 0, 4);
@@ -315,6 +401,7 @@ public sealed class WarReminderWorker : BackgroundService
                         await UpsertSettingAsync(totalsKey, $"{curTotal};{curMax}");
                         await UpsertSettingAsync(textKey, text);
                         await db.SaveChangesAsync(ct);
+                    }
                     }
                 }
             }

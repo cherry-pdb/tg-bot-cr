@@ -1,7 +1,7 @@
 using System.Text;
 using CrTelegramBot.ClashRoyale;
-using CrTelegramBot.ClashRoyale.Models;
 using CrTelegramBot.Configuration;
+using CrTelegramBot.ClashRoyale.Models;
 using CrTelegramBot.Data;
 using CrTelegramBot.Data.Entities;
 using CrTelegramBot.Services;
@@ -64,12 +64,26 @@ public sealed class BotUpdateHandler : IUpdateHandler
             if (mes.Text == "chatId")
             {
                 _config.MainChatId = mes.Chat.Id;
-                
+
+                await using var chatIdScope = _scopeFactory.CreateAsyncScope();
+                var dbChat = chatIdScope.ServiceProvider.GetRequiredService<BotDbContext>();
+                var chatIdVal = mes.Chat.Id.ToString();
+                var row = await dbChat.BotSettings.FirstOrDefaultAsync(x => x.Key == BotConfig.MainChatIdSettingKey, ct);
+
+                if (row is null)
+                    dbChat.BotSettings.Add(new BotSetting { Key = BotConfig.MainChatIdSettingKey, Value = chatIdVal });
+                else
+                    row.Value = chatIdVal;
+
+                await dbChat.SaveChangesAsync(ct);
+
                 await SendBotMessageAsync(
                     mes.Chat.Id,
                     mes.Chat.Type,
                     "Updated successfully",
                     cancellationToken: ct);
+
+                return;
             }
         }
 // ---------------------------------------------------------------------------------------------------------------------
