@@ -131,6 +131,70 @@ public sealed class WarReminderWorker : BackgroundService
             .ToList();
     }
 
+    private HashSet<DayOfWeek> GetWarStartDaysSet()
+    {
+        if (_config.WarStartDaysOfWeek is { Length: > 0 })
+        {
+            var set = new HashSet<DayOfWeek>();
+
+            foreach (var s in _config.WarStartDaysOfWeek)
+            {
+                if (Enum.TryParse<DayOfWeek>(s?.Trim(), ignoreCase: true, out var dow))
+                    set.Add(dow);
+            }
+
+            if (set.Count > 0)
+                return set;
+        }
+
+        return [DayOfWeek.Thursday];
+    }
+
+    private bool ShouldFireWarStartThisMinute(DateTime utcNow, out string startDayKey)
+    {
+        startDayKey = "";
+
+        if (!string.IsNullOrWhiteSpace(_config.WarStartLocalTime))
+        {
+            if (!TimeOnly.TryParseExact(_config.WarStartLocalTime.Trim(), "HH:mm", out var startTime))
+                return false;
+
+            TimeZoneInfo tz;
+
+            try
+            {
+                tz = TimeZoneInfo.FindSystemTimeZoneById(BotConfig.WarEndDaySummaryTimeZoneId);
+            }
+            catch
+            {
+                return false;
+            }
+
+            var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), tz);
+
+            if (!GetWarStartDaysSet().Contains(localNow.DayOfWeek))
+                return false;
+
+            var windowStart = localNow.Date + startTime.ToTimeSpan();
+
+            if (localNow >= windowStart && localNow < windowStart.AddMinutes(15))
+            {
+                startDayKey = localNow.ToString("yyyy-MM-dd");
+                return true;
+            }
+
+            return false;
+        }
+
+        var nowOff = new DateTimeOffset(utcNow, TimeSpan.Zero);
+
+        if (nowOff.Hour != _config.ReminderHourUtc || nowOff.Minute >= 15)
+            return false;
+
+        startDayKey = nowOff.UtcDateTime.ToString("yyyy-MM-dd");
+        return true;
+    }
+
     private async Task<long> GetMainChatIdAsync(BotDbContext db, CancellationToken ct)
     {
         var row = await db.BotSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == BotConfig.MainChatIdSettingKey, ct);
@@ -210,9 +274,9 @@ public sealed class WarReminderWorker : BackgroundService
         var now = DateTimeOffset.UtcNow;
         var dayKey = now.ToString("yyyy-MM-dd");
 
-        if (now.Hour == _config.ReminderHourUtc && now.Minute < 15)
+        if (ShouldFireWarStartThisMinute(utcNow, out var warStartDayKey))
         {
-            var marker = $"war_start_{dayKey}";
+            var marker = $"war_start_{warStartDayKey}";
             
             if (!await db.BotSettings.AnyAsync(x => x.Key == marker, ct))
             {

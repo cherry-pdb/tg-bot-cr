@@ -11,9 +11,9 @@ public sealed class BotConfig
     public long MainChatId { get; set; }
     public string ClanTag { get; init; } = string.Empty;
     public int ReminderHourUtc { get; init; } = 8;
-    /// <summary>Час окончания игрового дня КВ в UTC (если не задано <see cref="WarEndLocalTime"/>).</summary>
+    public string? WarStartLocalTime { get; init; }
+    public string[]? WarStartDaysOfWeek { get; init; }
     public int WarEndHourUtc { get; init; } = 23;
-    /// <summary>Время окончания игрового дня КВ по часовому поясу <see cref="WarEndDaySummaryTimeZoneId"/> (формат HH:mm). Если задано, напоминания «за N часов» считаются от него.</summary>
     public string? WarEndLocalTime { get; init; }
     public int WarEndDaySummaryMinutesBeforeEnd { get; init; } = 1;
     public static string WarEndDaySummaryTimeZoneId => "Russian Standard Time";
