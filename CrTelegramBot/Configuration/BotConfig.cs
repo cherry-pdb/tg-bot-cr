@@ -18,7 +18,7 @@ public sealed class BotConfig
     public int WarEndDaySummaryMinutesBeforeEnd { get; init; } = 1;
     public static string WarEndDaySummaryTimeZoneId => "Russian Standard Time";
     public string? WarEndDaySummaryLocalTime { get; init; }
-    public string[]? WarEndDaySummaryDaysOfWeek { get; init; }
+    public string[]? WarDaysOfWeek { get; init; }
     public int[] WarNudgesHoursBeforeEnd { get; init; } = [4, 2];
     public int TopLocationId { get; init; } = 57000193;
     public string[] LeaderUsernames { get; init; } = [];

@@ -66,11 +66,11 @@ public sealed class WarReminderWorker : BackgroundService
         if (!TimeOnly.TryParseExact(_config.WarEndDaySummaryLocalTime.Trim(), "HH:mm", out localTime))
             return false;
 
-        if (_config.WarEndDaySummaryDaysOfWeek is { Length: > 0 })
+        if (_config.WarDaysOfWeek is { Length: > 0 })
         {
             var set = new HashSet<DayOfWeek>();
             
-            foreach (var s in _config.WarEndDaySummaryDaysOfWeek)
+            foreach (var s in _config.WarDaysOfWeek)
                 if (Enum.TryParse<DayOfWeek>(s?.Trim(), ignoreCase: true, out var dow))
                     set.Add(dow);
             
@@ -195,6 +195,22 @@ public sealed class WarReminderWorker : BackgroundService
         return true;
     }
 
+    private HashSet<DayOfWeek>? TryGetWarDaysSet()
+    {
+        if (_config.WarDaysOfWeek is not { Length: > 0 })
+            return null;
+
+        var set = new HashSet<DayOfWeek>();
+
+        foreach (var s in _config.WarDaysOfWeek)
+        {
+            if (Enum.TryParse<DayOfWeek>(s?.Trim(), ignoreCase: true, out var dow))
+                set.Add(dow);
+        }
+
+        return set.Count > 0 ? set : null;
+    }
+
     private async Task<long> GetMainChatIdAsync(BotDbContext db, CancellationToken ct)
     {
         var row = await db.BotSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == BotConfig.MainChatIdSettingKey, ct);
@@ -225,6 +241,11 @@ public sealed class WarReminderWorker : BackgroundService
         }
 
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), tz);
+
+        var allowedDays = TryGetWarDaysSet();
+        if (allowedDays is not null && !allowedDays.Contains(localNow.DayOfWeek))
+            return false;
+
         var endLocal = localNow.Date + endTime.ToTimeSpan();
         var nudgeLocal = endLocal.AddHours(-hoursBeforeEnd);
 
