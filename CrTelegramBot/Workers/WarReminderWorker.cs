@@ -12,6 +12,9 @@ namespace CrTelegramBot.Workers;
 
 public sealed class WarReminderWorker : BackgroundService
 {
+    private const string BoatDefenseTextSettingKey = "boat_defense_text";
+    private const string DefaultBoatDefenseHeader = "🛡️ Напоминание: поставьте защиту на корабль.";
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ITelegramBotClient _botClient;
     private readonly BotConfig _config;
@@ -254,6 +257,57 @@ public sealed class WarReminderWorker : BackgroundService
                && localNow.Date == nudgeLocal.Date;
     }
 
+    private bool TryGetMskNow(DateTime utcNow, out DateTime localNow)
+    {
+        localNow = default;
+
+        try
+        {
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(BotConfig.WarEndDaySummaryTimeZoneId);
+            localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), tz);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool ShouldFireBoatDefenseReminderThisMinute(DateTime utcNow, out string localDayKey)
+    {
+        localDayKey = "";
+
+        if (string.IsNullOrWhiteSpace(_config.BoatDefenseReminderLocalTime))
+            return false;
+
+        if (!TimeOnly.TryParseExact(_config.BoatDefenseReminderLocalTime.Trim(), "HH:mm", out var time))
+            return false;
+
+        if (!TryGetMskNow(utcNow, out var localNow))
+            return false;
+
+        if (localNow.DayOfWeek != DayOfWeek.Monday)
+            return false;
+
+        var windowStart = localNow.Date + time.ToTimeSpan();
+
+        if (localNow < windowStart || localNow >= windowStart.AddMinutes(15))
+            return false;
+
+        localDayKey = localNow.ToString("yyyy-MM-dd");
+        return true;
+    }
+
+    private static async Task<string?> GetBoatDefenseSuffixAsync(BotDbContext db, CancellationToken ct)
+    {
+        var text = await db.BotSettings.AsNoTracking()
+            .Where(x => x.Key == BoatDefenseTextSettingKey)
+            .Select(x => x.Value)
+            .FirstOrDefaultAsync(ct);
+
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+    }
+
     private static string ComputeDecksSignature(IReadOnlyCollection<RiverRaceParticipantDto> participants)
     {
         var parts = participants
@@ -303,6 +357,24 @@ public sealed class WarReminderWorker : BackgroundService
             {
                 var sent = await _botClient.SendMessage(mainChatId, "⚔️ Началось КВ. Не забудьте отыграть колоды.", cancellationToken: ct);
                 _autoDelete.ScheduleDelete(mainChatId, sent.MessageId, TimeSpan.FromHours(1));
+                db.BotSettings.Add(new BotSetting { Key = marker, Value = "1" });
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        if (ShouldFireBoatDefenseReminderThisMinute(utcNow, out var boatDayKey))
+        {
+            var marker = $"boat_defense_{boatDayKey}";
+
+            if (!await db.BotSettings.AnyAsync(x => x.Key == marker, ct))
+            {
+                var suffix = await GetBoatDefenseSuffixAsync(db, ct);
+                var text = string.IsNullOrWhiteSpace(suffix)
+                    ? DefaultBoatDefenseHeader
+                    : DefaultBoatDefenseHeader + "\n" + suffix;
+
+                var sent = await _botClient.SendMessage(mainChatId, text, cancellationToken: ct);
+                _autoDelete.ScheduleDelete(mainChatId, sent.MessageId, TimeSpan.FromHours(2));
                 db.BotSettings.Add(new BotSetting { Key = marker, Value = "1" });
                 await db.SaveChangesAsync(ct);
             }

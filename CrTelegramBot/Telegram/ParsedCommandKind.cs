@@ -11,6 +11,7 @@ public enum ParsedCommandKind
     ParticipantsAll,
     WarStatus,
     RemindWar,
+    BoatDefense,
     Blacklist,
     RemoveBlacklist,
     Profile,

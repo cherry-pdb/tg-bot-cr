@@ -42,6 +42,9 @@ public sealed class CommandParser
         if (text.Equals("Напомни о КВ", StringComparison.OrdinalIgnoreCase))
             return new ParsedCommand(ParsedCommandKind.RemindWar);
 
+        if (text.Equals("Защита на корабль", StringComparison.OrdinalIgnoreCase))
+            return new ParsedCommand(ParsedCommandKind.BoatDefense);
+
         if (text.StartsWith("В ЧС#", StringComparison.OrdinalIgnoreCase))
             return new ParsedCommand(ParsedCommandKind.Blacklist, text[5..].Trim());
 

@@ -100,6 +100,52 @@ public sealed class BotUpdateHandler : IUpdateHandler
 
         await UpsertSeenUserAsync(message, db, ct);
 
+        if (message.From is not null)
+        {
+            var pendingKey = $"boat_defense_pending_{message.From.Id}";
+            var pending = await db.BotSettings.AsNoTracking().AnyAsync(x => x.Key == pendingKey, ct);
+
+            if (pending)
+            {
+                var isLeaderPending = await leaderService.IsLeaderAsync(message.From, ct);
+
+                if (!isLeaderPending)
+                {
+                    var row = await db.BotSettings.FirstOrDefaultAsync(x => x.Key == pendingKey, ct);
+                    if (row is not null)
+                    {
+                        db.BotSettings.Remove(row);
+                        await db.SaveChangesAsync(ct);
+                    }
+                }
+                else
+                {
+                    var cmd = _parser.Parse(text);
+                    if (cmd is null || cmd.Kind != ParsedCommandKind.BoatDefense)
+                    {
+                        var newText = text.Trim();
+                        if (newText.Length > 0)
+                        {
+                            var textKey = "boat_defense_text";
+                            var textRow = await db.BotSettings.FirstOrDefaultAsync(x => x.Key == textKey, ct);
+                            if (textRow is null)
+                                db.BotSettings.Add(new BotSetting { Key = textKey, Value = newText });
+                            else
+                                textRow.Value = newText;
+
+                            var pendingRow = await db.BotSettings.FirstOrDefaultAsync(x => x.Key == pendingKey, ct);
+                            if (pendingRow is not null)
+                                db.BotSettings.Remove(pendingRow);
+
+                            await db.SaveChangesAsync(ct);
+                            await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "✅ Текст напоминания сохранён.", cancellationToken: ct);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
         if (TryHandleFunReply(text, out var funReply))
         {
             await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, funReply, cancellationToken: ct);
@@ -180,6 +226,21 @@ public sealed class BotUpdateHandler : IUpdateHandler
                 if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
                 await SetWarReminderEnabledAsync(db, true, ct);
                 await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "✅ Напоминания о КВ включены.", cancellationToken: ct);
+                break;
+
+            case ParsedCommandKind.BoatDefense:
+                if (!isLeader) { await DenyAsync(message.Chat.Id, message.Chat.Type, ct); return; }
+                {
+                    var pendingKey = $"boat_defense_pending_{message.From!.Id}";
+                    var row = await db.BotSettings.FirstOrDefaultAsync(x => x.Key == pendingKey, ct);
+                    if (row is null)
+                        db.BotSettings.Add(new BotSetting { Key = pendingKey, Value = DateTimeOffset.UtcNow.ToString("O") });
+                    else
+                        row.Value = DateTimeOffset.UtcNow.ToString("O");
+
+                    await db.SaveChangesAsync(ct);
+                    await SendBotMessageAsync(message.Chat.Id, message.Chat.Type, "Ок. Жду сообщение от Вас — следующий ваш текст добавлю после строки «🛡️ Напоминание: поставьте защиту на корабль.»", cancellationToken: ct);
+                }
                 break;
 
             case ParsedCommandKind.Blacklist:
@@ -293,6 +354,7 @@ public sealed class BotUpdateHandler : IUpdateHandler
         sb.AppendLine("• <b><u>all / все</u></b> — то же, но с упоминаниями привязанных.");
         sb.AppendLine("• <b><u>Что с КВ</u></b> — текущий статус КВ и кланы в рейсе.");
         sb.AppendLine("• <b><u>Напомни о КВ</u></b> — включить автоматические напоминания о КВ в основной чат.");
+        sb.AppendLine("• <b><u>Защита на корабль</u></b> — задать текст напоминания про защиту на корабль (следующее сообщение от тебя сохраню).");
         sb.AppendLine("• <b><u>В ЧС#ТЕГ</u></b> — добавить в чёрный список по тегу; также <b>В ЧС</b> ответом или <b>В ЧС@username</b>, если ровно одна привязка.");
         sb.AppendLine("• <b><u>Из ЧС#ТЕГ</u></b> — убрать из чёрного списка; при нескольких привязках — только с тегом.");
         sb.AppendLine("• <b><u>Добавить руководителя</u></b> — добавить руководителя (ответом на сообщение) или <b>Добавить руководителя@username</b>.");

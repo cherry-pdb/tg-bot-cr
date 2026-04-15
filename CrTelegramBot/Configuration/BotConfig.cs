@@ -20,6 +20,8 @@ public sealed class BotConfig
     public string? WarEndDaySummaryLocalTime { get; init; }
     public string[]? WarDaysOfWeek { get; init; }
     public int[] WarNudgesHoursBeforeEnd { get; init; } = [4, 2];
+    /// <summary>Напоминание поставить защиту на корабль (HH:mm, по МСК). Если не задано — отключено.</summary>
+    public string? BoatDefenseReminderLocalTime { get; init; }
     public int TopLocationId { get; init; } = 57000193;
     public string[] LeaderUsernames { get; init; } = [];
     public int ClanMonitorIntervalSeconds { get; init; } = 60;
