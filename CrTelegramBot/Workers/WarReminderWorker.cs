@@ -445,7 +445,7 @@ public sealed class WarReminderWorker : BackgroundService
             var text =
                 $"⏰ До конца дня КВ осталось примерно {hoursBeforeEnd}ч.\n" +
                 $"Кто ещё не доиграл 4 колоды (сегодня):\n" +
-                string.Join(" ", mentions);
+                string.Join("\n", mentions);
 
             var sent = await _botClient.SendMessage(mainChatId, text, cancellationToken: ct);
             _autoDelete.ScheduleDelete(mainChatId, sent.MessageId, TimeSpan.FromHours(1));
@@ -540,10 +540,20 @@ public sealed class WarReminderWorker : BackgroundService
                             })
                             .ToList();
 
+                        var boatAttackLines = participantsInClan
+                            .Where(p => p.BoatAttacks > 0)
+                            .OrderByDescending(p => p.BoatAttacks)
+                            .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                            .Select(p => $"• {p.Name} — атак по кораблям: {p.BoatAttacks}")
+                            .ToList();
+
                         var header = $"📋 Сводка по КВ (последняя минута перед сбросом, МСК {localNow:HH:mm}):\n";
                         var text = lines.Count > 0
                             ? header + string.Join('\n', lines)
                             : header + "Все участники отыграли 4 колоды.";
+
+                        if (boatAttackLines.Count > 0)
+                            text += "\n\n🛶 Атаки по кораблям (сегодня):\n" + string.Join('\n', boatAttackLines);
 
                         async Task UpsertSettingAsync(string key, string value)
                         {
